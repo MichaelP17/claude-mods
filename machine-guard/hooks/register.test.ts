@@ -107,3 +107,19 @@ test('a project ask rule shows its reason in one dialog, also for globally harml
   await $.tool.call({ tool: 'Bash', command: 'dotnet build' })
   expect(asked).toHaveLength(2)
 })
+
+test('a failing check refuses the command instead of running it', async ($, on) => {
+  const ran: string[] = []
+  on('session.cwd', () => {
+    throw new Error('no working directory')
+  })
+  on('tool.call', { tool: 'Bash' }, (_$, e) => {
+    ran.push(e.command)
+
+    return BASH_OK
+  })
+
+  const result = await $.tool.call({ tool: 'Bash', command: 'brew install jq' })
+  expect(result.text ?? result.deny ?? '').toContain('could not check this command')
+  expect(ran).toHaveLength(0)
+})

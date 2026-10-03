@@ -66,5 +66,15 @@ export const register: Register = on => {
     return {
       deny: `The user did not approve this command (${reasons}).${note} Do not run it another way; give the user the command in a code block instead and wait.`,
     }
+  }).catch(($, e, next) => {
+    // A failing guard must not wave the command through. Once the hook had
+    // passed the command on, it was approved or harmless and keeps that result.
+    if (next.called) {
+      return undefined
+    }
+
+    return {
+      deny: `machine-guard could not check this command (${next.error.message ?? next.error.kind}), so it was not run. Give the user the command in a code block instead.`,
+    }
   })
 }
