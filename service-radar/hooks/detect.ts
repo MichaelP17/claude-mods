@@ -45,13 +45,31 @@ export function stripHeredocs(command: string): string {
 
 function splitSegments(command: string): string[] {
   return command
-    .split(/&&|\|\||[;\n]/)
+    .split(/&&|\|\||[;|\n]/)
     .map(i => i.trim())
     .filter(i => i.length > 0)
 }
 
 function tokenize(segment: string): string[] {
-  const tokens = (segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(i => i.replace(/^(["'])(.*)\1$/, '$2'))
+  const raw = (segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(i => i.replace(/^(["'])(.*)\1$/, '$2'))
+  // Redirections (`2>&1`, `> log`, `2>/dev/null`) and a trailing `&` belong to
+  // the shell, not to the program; read as arguments they would turn into a
+  // bogus Colima profile or container name.
+  const tokens: string[] = []
+  for (let index = 0; index < raw.length; index += 1) {
+    const token = raw[index] ?? ''
+    if (token === '&') {
+      continue
+    }
+    if (/^(\d*|&)(>>?|<)$/.test(token)) {
+      index += 1
+      continue
+    }
+    if (/^(\d*|&)(>>?|<)\S/.test(token)) {
+      continue
+    }
+    tokens.push(token)
+  }
   let start = 0
   while (start < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[start] ?? '') || tokens[start] === 'sudo')) {
     start += 1

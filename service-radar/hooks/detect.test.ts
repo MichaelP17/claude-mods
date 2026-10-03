@@ -47,6 +47,18 @@ describe('detectServices', () => {
     expect(found?.stop).toEqual(['docker', 'stop', 'a1b2c3d4e5f6'])
   })
 
+  test('redirections and pipes are not read as a profile', () => {
+    const [found] = detectServices('colima start 2>&1 | tail -20; colima status 2>&1', '/repo', HOME, '')
+    expect(found?.stop).toEqual(['colima', 'stop'])
+    expect(found?.check?.argv).toEqual(['colima', 'status'])
+  })
+
+  test('a redirection target is not read as a container name', () => {
+    expect(detectServices('docker start pg > /tmp/out.log 2>/dev/null', '/repo', HOME, '').map(i => i.stop)).toEqual([
+      ['docker', 'stop', 'pg'],
+    ])
+  })
+
   test('colima with and without profile', () => {
     expect(detectServices('colima start', '/repo', HOME, '')[0]?.stop).toEqual(['colima', 'stop'])
     expect(detectServices('colima start --profile work --cpu 4', '/repo', HOME, '')[0]?.stop).toEqual(['colima', 'stop', 'work'])
