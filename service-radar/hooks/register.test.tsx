@@ -35,9 +35,9 @@ test('a detached compose stack is tracked, shown and stopped from the pane', asy
   const statuses: (string | undefined)[] = []
   mock.store(on)
   mock.env(on, { HOME: '/Users/test' })
+  const clock = mock.clock(on)
   fakeDocker(on, calls)
   on('session.cwd', () => ({ value: '/repo' }))
-  on('clock.now', () => ({ value: 0 }))
   on('ui.status', (_$, e) => {
     statuses.push(e.text)
 
@@ -59,6 +59,7 @@ test('a detached compose stack is tracked, shown and stopped from the pane', asy
   const ui = await $.ui.mount({ plugin: 'service-radar', surface: 'terminal', ...PANE })
   const stopKey = (await ui.findAll({ type: 'Button' })).find(i => i.key?.startsWith('stop-'))?.key ?? ''
   await ui.press({ key: stopKey })
+  await clock.advance(1)
   expect(calls).toContain('/repo/app $ docker compose down')
   expect(statuses.at(-1)).toBeUndefined()
   await ui.unmount()

@@ -33,7 +33,8 @@ Services are matched in chained commands too, including a preceding `cd`: in `cd
 
 - The list is kept across sessions, because services outlive them. Exiting Claude Code cannot show a dialog, so the next session reminds you instead.
 - Only commands Claude runs through its Bash tool are seen. Services you start yourself are not listed.
-- Processes sent to the background with `&` or `nohup` are not tracked; use Claude Code's background shells for those, which it lists and stops itself.
+- A tracked start is recognised behind `sudo`, `nohup`, `env` and similar prefixes and when sent to the background with `&`. Other programs sent to the background, such as `npm run dev &`, are not tracked; Claude Code's own background shells list and stop those.
+- Stopping runs in the background after a press, so a slow stop (Colima takes about ten seconds) is never cut short.
 - Checks run with a 20-second timeout and never delay the start of a session.
 
 ## Uninstall

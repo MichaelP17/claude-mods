@@ -43,6 +43,9 @@ export function stripHeredocs(command: string): string {
   return kept.join('\n')
 }
 
+// Prefixes that run the next word as the actual program.
+const WRAPPERS = new Set(['sudo', 'nohup', 'command', 'exec', 'time', 'env', 'setsid', 'caffeinate'])
+
 function splitSegments(command: string): string[] {
   return command
     .split(/&&|\|\||[;|\n]/)
@@ -71,7 +74,7 @@ function tokenize(segment: string): string[] {
     tokens.push(token)
   }
   let start = 0
-  while (start < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[start] ?? '') || tokens[start] === 'sudo')) {
+  while (start < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[start] ?? '') || WRAPPERS.has(tokens[start] ?? ''))) {
     start += 1
   }
 

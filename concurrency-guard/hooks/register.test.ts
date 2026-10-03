@@ -121,3 +121,19 @@ test('five subagents started in one message respect a limit of four', async ($, 
   expect(started).toHaveLength(4)
   expect(results.filter(i => (i.text ?? i.deny ?? '').includes('Concurrency limit reached'))).toHaveLength(1)
 })
+
+test('a monitor call without description is passed on instead of crashing', async ($, on) => {
+  let reached = false
+  on('agent.list', () => ({ value: [] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('tool.call', { tool: 'Monitor' }, () => {
+    reached = true
+
+    return { isError: true, result: 'The required parameter `description` is missing' }
+  })
+
+  const input = { tool: 'Monitor', command: 'sleep 45', timeout_ms: 60_000 } as unknown as Parameters<typeof $.tool.call>[0]
+  const result = await $.tool.call(input)
+  expect(reached).toBe(true)
+  expect(result.isError).toBe(true)
+})

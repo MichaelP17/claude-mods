@@ -150,6 +150,10 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
+    // A call missing its parameters is rejected by Claude Code's own validation.
+    if (typeof e.prompt !== 'string' || typeof e.description !== 'string') {
+      return next(e)
+    }
     const { reason, rest } = takeReasonLine(e.prompt)
     const refusal = await serialized(async () => {
       const decision = await gate(
@@ -186,6 +190,9 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', { tool: 'Monitor' }, async ($, e, next) => {
+    if (typeof e.description !== 'string') {
+      return next(e)
+    }
     const { reason, rest } = takeReasonPrefix(e.description)
     const refusal = await serialized(async () => {
       const decision = await gate(

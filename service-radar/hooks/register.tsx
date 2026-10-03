@@ -95,6 +95,14 @@ async function busy($: EngineInterface, work: () => Promise<string>): Promise<vo
   }
 }
 
+// A press handler runs under Claude Code's 10-second hook budget, and stopping
+// a VM takes longer; the work is handed to a timer, which has no such limit.
+function inBackground($: EngineInterface, work: () => Promise<string>): void {
+  $.clock.after(0, () => {
+    void busy($, work)
+  })
+}
+
 async function forget($: EngineInterface, id: string): Promise<void> {
   await saveServices($, (await loadServices($)).filter(i => i.id !== id))
 }
@@ -199,7 +207,7 @@ export const register: Register = on => {
               {shortPath(service.cwd, home)} · since {clockTime(service.startedAt)}
               {'  '}
             </Text>
-            <Button key={`stop-${service.id}`} label="Stop" onPress={() => busy($, () => stopService($, service))} />
+            <Button key={`stop-${service.id}`} label="Stop" onPress={() => inBackground($, () => stopService($, service))} />
             {service.check === null && (
               <Button key={`forget-${service.id}`} dimColor label="Forget" onPress={() => forget($, service.id)} />
             )}
@@ -214,8 +222,8 @@ export const register: Register = on => {
         )}
 
         <Box marginTop={1}>
-          {list.length > 1 && <Button key="stop-all" label="Stop all" onPress={() => busy($, () => stopAll($))} />}
-          <Button key="refresh" dimColor label="Refresh" onPress={() => busy($, async () => `${(await refresh($)).length} running`)} />
+          {list.length > 1 && <Button key="stop-all" label="Stop all" onPress={() => inBackground($, () => stopAll($))} />}
+          <Button key="refresh" dimColor label="Refresh" onPress={() => inBackground($, async () => `${(await refresh($)).length} running`)} />
           <Button key="close" role="dismiss" dimColor label="Close" onPress={() => $.ui.close({ id: PANE })} />
         </Box>
       </Box>

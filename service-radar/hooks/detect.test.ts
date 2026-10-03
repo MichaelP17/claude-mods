@@ -59,6 +59,13 @@ describe('detectServices', () => {
     ])
   })
 
+  test('a start behind nohup and sent to the background is tracked', () => {
+    const command = 'nohup colima start > /tmp/colima-start.log 2>&1 < /dev/null &\ndisown\nfor n in $(seq 1 60); do colima status >/dev/null 2>&1 && break; sleep 2; done'
+    const found = detectServices(command, '/repo', HOME, '')
+    expect(found.map(i => i.stop)).toEqual([['colima', 'stop']])
+    expect(found[0]?.check?.argv).toEqual(['colima', 'status'])
+  })
+
   test('colima with and without profile', () => {
     expect(detectServices('colima start', '/repo', HOME, '')[0]?.stop).toEqual(['colima', 'stop'])
     expect(detectServices('colima start --profile work --cpu 4', '/repo', HOME, '')[0]?.stop).toEqual(['colima', 'stop', 'work'])
