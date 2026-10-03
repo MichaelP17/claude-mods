@@ -1,6 +1,6 @@
 # machine-guard
 
-Stops Claude from changing your machine behind your back. Before a command that installs software, needs root, starts services or edits global configuration runs, a dialog shows you the command and the reason it was caught:
+Stops Claude from changing your machine behind your back. Before a command that installs software, needs root, downloads images or edits global configuration runs, a dialog shows you the command and the reason it was caught:
 
 ```
 Claude wants to run a command that changes this machine (brew install changes installed packages):
@@ -23,14 +23,17 @@ No setup needed.
 | Caught | Let through |
 | --- | --- |
 | `sudo`, `curl … \| sh` | read-only commands such as `brew list`, `docker ps` |
-| `brew install`, `upgrade`, `uninstall`, `tap`, `services start`, `bundle` | project dependencies: `npm install`, `npm ci`, `pnpm install` |
+| `brew install`, `upgrade`, `uninstall`, `tap`, `bundle` | project dependencies: `npm install`, `npm ci`, `pnpm install` |
 | global `npm`, `pnpm`, `yarn`, `bun` installs | `pip` inside a virtual environment (`.venv/bin/pip`) |
-| `pip` outside a virtual environment, `pipx`, `uv tool`, `cargo install`, `go install`, `gem install`, `dotnet tool install -g` | stopping things: `colima stop`, `brew services stop` |
+| `pip` outside a virtual environment, `pipx`, `uv tool`, `cargo install`, `go install`, `gem install`, `dotnet tool install -g` | starting and stopping services: `colima start`, `docker compose up`, `docker run`, `brew services start`, `launchctl load` |
 | `mise install` and `use`, `asdf`, `rustup` | `git config` without `--global` |
-| `colima start`, `docker run`, `pull`, `build`, `docker compose up`, `launchctl load` | |
+| `docker pull`, `build`, `create`, `docker compose pull`, `build` | |
+| `colima delete`, `podman machine init` and `rm`, `launchctl enable` | |
 | `defaults write`, writing `git config --global`, `xcode-select --install`, `softwareupdate`, `winget`, `choco`, `scoop` | |
 
 Chained commands are checked part by part: in `cd app && brew install jq` the second part is caught.
+
+Starting a service changes nothing permanent and is left to [`service-radar`](../service-radar/README.md), which keeps track of what Claude started and offers to stop it. Use an `ask` rule (below) where starting something should still be confirmed.
 
 ## Per-project rules
 

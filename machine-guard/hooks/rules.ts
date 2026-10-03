@@ -31,9 +31,6 @@ const RULES: Rule[] = [
     if (verb !== undefined && changing.includes(verb)) {
       return `brew ${verb} changes installed packages`
     }
-    if (verb === 'services' && has(args, 'start', 'restart', 'run')) {
-      return 'brew services changes background services'
-    }
     if (verb === 'bundle' && !has(args, 'dump', 'check', 'list')) {
       return 'brew bundle installs packages'
     }
@@ -108,26 +105,27 @@ const RULES: Rule[] = [
   (tool, args) => {
     const verb = subcommand(args)
     switch (tool) {
+      // Starting and stopping services is left to service-radar, which tracks
+      // what was started; only creating, deleting and downloading stays here.
       case 'colima':
       case 'limactl':
-        return verb !== undefined && ['start', 'restart', 'delete'].includes(verb)
-          ? `${tool} ${verb} changes the container VM`
-          : null
+        return verb === 'delete' ? `${tool} delete removes a VM and its data` : null
       case 'podman':
-        return verb === 'machine' && has(args, 'start', 'init', 'rm') ? 'podman machine changes the container VM' : null
+        return verb === 'machine' && has(args, 'init', 'rm') ? 'podman machine creates or removes a VM' : null
       case 'docker': {
-        const changing = ['run', 'pull', 'start', 'build', 'create', 'load', 'import']
         if (verb === 'compose') {
           const composeVerb = subcommand(args.slice(args.indexOf('compose') + 1))
-          return composeVerb !== undefined && ['up', 'pull', 'build', 'run', 'start', 'create'].includes(composeVerb)
-            ? `docker compose ${composeVerb} starts containers or pulls images`
+          return composeVerb !== undefined && ['pull', 'build', 'create'].includes(composeVerb)
+            ? `docker compose ${composeVerb} downloads or builds images`
             : null
         }
-        return verb !== undefined && changing.includes(verb) ? `docker ${verb} starts containers or pulls images` : null
+        return verb !== undefined && ['pull', 'build', 'create', 'load', 'import'].includes(verb)
+          ? `docker ${verb} downloads or builds images`
+          : null
       }
       case 'launchctl':
-        return verb !== undefined && ['load', 'bootstrap', 'enable', 'kickstart', 'submit'].includes(verb)
-          ? `launchctl ${verb} changes background services`
+        return verb !== undefined && ['enable', 'submit'].includes(verb)
+          ? `launchctl ${verb} changes background services permanently`
           : null
       default:
         return null

@@ -19,6 +19,22 @@ describe('detectServices', () => {
     expect(detectServices('docker compose up', '/repo', HOME, '')).toEqual([])
   })
 
+  test('docker compose start is stopped, not taken down', () => {
+    expect(detectServices('docker compose start', '/repo', HOME, '')[0]?.stop).toEqual(['docker', 'compose', 'stop'])
+  })
+
+  test('docker start tracks every named container', () => {
+    expect(detectServices('docker start pg redis', '/repo', HOME, '').map(i => i.stop)).toEqual([
+      ['docker', 'stop', 'pg'],
+      ['docker', 'stop', 'redis'],
+    ])
+  })
+
+  test('launchctl bootstrap is undone with bootout', () => {
+    const [found] = detectServices('launchctl bootstrap gui/501 ~/Library/LaunchAgents/dev.plist', '/repo', HOME, '')
+    expect(found?.stop).toEqual(['launchctl', 'bootout', 'gui/501', '/Users/test/Library/LaunchAgents/dev.plist'])
+  })
+
   test('docker run -d with a name', () => {
     const [found] = detectServices('docker run -d --name pg -p 5432:5432 postgres:18', '/repo', HOME, '')
     expect(found?.stop).toEqual(['docker', 'stop', 'pg'])

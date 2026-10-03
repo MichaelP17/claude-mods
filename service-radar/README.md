@@ -19,10 +19,13 @@ No setup needed.
 | Started with | Stopped with | Running check |
 | --- | --- | --- |
 | `docker compose up -d` (also `docker-compose`) | `docker compose down` in the same folder, with the same `-f`, `-p` and `--profile` flags | `docker compose ps` |
+| `docker compose start` | `docker compose stop`, which keeps the containers | `docker compose ps` |
 | `docker run -d` | `docker stop <name or id>` | `docker ps` |
+| `docker start <name>` | `docker stop <name>` | `docker ps` |
 | `colima start [profile]` | `colima stop [profile]` | `colima status` |
 | `brew services start` / `run` / `restart` | `brew services stop` | `brew services info --json` |
 | `launchctl load` | `launchctl unload` | none — shown with `?` and a **Forget** button |
+| `launchctl bootstrap <domain> <plist>` | `launchctl bootout <domain> <plist>` | none — shown with `?` and a **Forget** button |
 
 Services are matched in chained commands too, including a preceding `cd`: in `cd app && docker compose up -d` the stack is tracked in `app`. A service that was stopped some other way — by you in a terminal, or by Claude running the stop command — drops off the list the next time it is checked.
 

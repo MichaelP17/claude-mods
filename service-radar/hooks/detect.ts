@@ -95,11 +95,10 @@ function detectCompose(args: readonly string[], cwd: string): Detected | null {
     }
     index += 1
   }
-  if (args[index] !== 'up') {
-    return null
-  }
-  const upArgs = args.slice(index + 1)
-  if (!upArgs.some(i => i === '-d' || i === '--detach' || /^-[a-z]*d[a-z]*$/.test(i))) {
+  const verb = args[index]
+  const verbArgs = args.slice(index + 1)
+  const isDetachedUp = verb === 'up' && verbArgs.some(i => i === '-d' || i === '--detach' || /^-[a-z]*d[a-z]*$/.test(i))
+  if (!isDetachedUp && verb !== 'start') {
     return null
   }
   const projectIndex = globalFlags.findIndex(i => i === '-p' || i === '--project-name')
@@ -108,7 +107,9 @@ function detectCompose(args: readonly string[], cwd: string): Detected | null {
   return {
     label: `docker compose: ${project}`,
     cwd,
-    stop: ['docker', 'compose', ...globalFlags, 'down'],
+    // `up` created the containers, so `down` removes them again; `start` only
+    // resumed existing ones, which `stop` leaves in place.
+    stop: ['docker', 'compose', ...globalFlags, verb === 'start' ? 'stop' : 'down'],
     check: { argv: ['docker', 'compose', ...globalFlags, 'ps', '--status', 'running', '-q'], rule: 'output' },
   }
 }
@@ -148,6 +149,18 @@ export function detectServices(command: string, startCwd: string, home: string, 
       continue
     }
 
+    if (tool === 'docker' && args[0] === 'start') {
+      for (const name of args.slice(1).filter(i => !i.startsWith('-'))) {
+        found.push({
+          label: `docker container: ${name}`,
+          cwd,
+          stop: ['docker', 'stop', name],
+          check: { argv: ['docker', 'ps', '-q', '--filter', `name=^${name}$`], rule: 'output' },
+        })
+      }
+      continue
+    }
+
     let detected: Detected | null = null
     if (tool === 'docker' && args[0] === 'compose') {
       detected = detectCompose(args.slice(1), cwd)
@@ -175,6 +188,9 @@ export function detectServices(command: string, startCwd: string, home: string, 
           check: { argv: ['brew', 'services', 'info', formula, '--json'], rule: 'brew' },
         }
       }
+    } else if (tool === 'launchctl' && args[0] === 'bootstrap' && args[1] !== undefined && args[2] !== undefined) {
+      const absolute = resolvePath(cwd, args[2], home)
+      detected = { label: `launch agent: ${folderName(absolute)}`, cwd, stop: ['launchctl', 'bootout', args[1], absolute], check: null }
     } else if (tool === 'launchctl' && args[0] === 'load') {
       const path = args.slice(1).find(i => !i.startsWith('-'))
       if (path !== undefined) {
