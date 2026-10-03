@@ -1,0 +1,58 @@
+{
+  "name": "jev-compact",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Compacts by cutting tool output that can be re-read instead of summarizing the conversation; Jev decides what stays",
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "description": "shadow: compute and report what would be cut, but let the native compaction run. active: replace the native compaction.",
+      "options": ["shadow", "active"],
+      "default": "shadow"
+    },
+    "apiKey": {
+      "type": "string",
+      "title": "TypeSafe API key",
+      "description": "Key for Jev. Without one, only the local rules run. TYPESAFE_API_KEY in the environment works as well.",
+      "sensitive": true,
+      "default": ""
+    },
+    "targetTokens": {
+      "type": "number",
+      "title": "Target context (tokens)",
+      "description": "Each stage only runs while the cut transcript is still above this size; missing it falls back to the native summary over the cut transcript.",
+      "default": 150000
+    },
+    "keepThreshold": {
+      "type": "number",
+      "title": "Keep threshold",
+      "description": "A tool output stays verbatim when Jev's keep probability reaches this value.",
+      "default": 0.5
+    },
+    "aggressiveThreshold": {
+      "type": "number",
+      "title": "Aggressive keep threshold",
+      "description": "Used when the normal threshold misses the target.",
+      "default": 0.75
+    },
+    "preserveRecentMessages": {
+      "type": "number",
+      "title": "Protected recent messages",
+      "description": "The newest messages, and the first one, are never cut.",
+      "default": 6
+    },
+    "previewChars": {
+      "type": "number",
+      "title": "Preview for Jev (chars)",
+      "description": "How much of each tool output Jev sees, after secrets are redacted. 0 sends no output at all.",
+      "default": 300
+    },
+    "keepHeadChars": {
+      "type": "number",
+      "title": "Head kept when cutting (chars)",
+      "description": "How much of a cut tool output stays in the transcript.",
+      "default": 300
+    }
+  }
+}
