@@ -1,0 +1,7 @@
+{
+  "name": "service-radar",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Keeps track of detached services Claude starts and stops them on request",
+  "types": "./types/index.d.ts"
+}

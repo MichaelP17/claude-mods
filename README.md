@@ -7,6 +7,7 @@ Mods for [Claude Code](https://code.claude.com): small plugins of function hooks
 | [`config-snapshots`](config-snapshots/README.md) | Versions `~/.claude` in git: named snapshots, diffs and rollbacks, from the terminal or with `/snapshot`, `/snapshots` and `/rollback` |
 | [`machine-guard`](machine-guard/README.md) | Asks you before Claude runs a command that changes your machine — installs, `sudo`, services, global config |
 | [`concurrency-guard`](concurrency-guard/README.md) | Caps how many subagents and monitors run at the same time; more need a stated reason and your approval |
+| [`service-radar`](service-radar/README.md) | Tracks services Claude starts detached — Docker Compose stacks, containers, Colima, Homebrew services — and stops them on request or at `/clear` |
 
 Each mod is independent. Install only the ones you want.
 
@@ -34,10 +35,10 @@ Claude Code loads mods from the folders listed in the environment variable `CLAU
    cp ~/.claude/settings.json ~/.claude/settings.json.backup
    ```
 
-3. **Add the mod folders to `CLAUDE_CODE_PLUGIN_DIRS`.** Use absolute paths, separated by `:` (on Windows `;`). Keep every entry that is already there. This command appends all three mods and creates the `env` block if it is missing; remove the ones you do not want from `MODS`:
+3. **Add the mod folders to `CLAUDE_CODE_PLUGIN_DIRS`.** Use absolute paths, separated by `:` (on Windows `;`). Keep every entry that is already there. This command appends all four mods and creates the `env` block if it is missing; remove the ones you do not want from `MODS`:
 
    ```sh
-   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard"
+   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard:$HOME/claude-mods/service-radar"
    jq --arg mods "$MODS" '.env.CLAUDE_CODE_PLUGIN_DIRS = (if (.env.CLAUDE_CODE_PLUGIN_DIRS // "") == "" then $mods else .env.CLAUDE_CODE_PLUGIN_DIRS + ":" + $mods end)' \
      ~/.claude/settings.json > /tmp/settings.json && mv /tmp/settings.json ~/.claude/settings.json
    ```
