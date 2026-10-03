@@ -69,6 +69,8 @@ export OPENROUTER_API_KEY="$(security find-generic-password -a "$USER" -s openro
 
 The first command asks for the key and stores it; the second line belongs in `~/.zshrc`. Claude Code reads the variable when it starts, so restart it from a new shell afterwards.
 
+When the variable is not set — the desktop app starts sessions without the shell profile — the mod reads the Keychain item `<provider>-api-key` (`openrouter-api-key`, `typesafe-api-key`) itself, so the key stored by the first command is enough there.
+
 ## Details and limits
 
 - Only the main conversation is compacted this way; subagents keep the native compaction.

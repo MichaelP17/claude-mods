@@ -212,6 +212,10 @@ export const register: Register = (on, options) => {
     if (current === null || e.props.hasSurvey || e.props.isWorking) {
       return next(e)
     }
+    // Another mod's band (status-band) may be drawn beneath; it stays under this
+    // one. An `engine` element means none was, and it cannot be nested.
+    const below = await next(e)
+    const beneath = below.type === 'engine' ? null : below
     const { Box, Button, Text } = $.ui.resolve(e)
     const context = formatTokens(current.contextTokens)
     const message =
@@ -237,6 +241,7 @@ export const register: Register = (on, options) => {
           <Text> </Text>
           <Button key="dismiss" label="Dismiss" hotkey="d" role="dismiss" onPress={() => update($, suggestion, () => null)} />
         </Box>
+        {beneath}
       </Box>
     )
   })

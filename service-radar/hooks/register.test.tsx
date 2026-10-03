@@ -110,3 +110,27 @@ test('/clear without running services asks nothing', async ($, on) => {
   await $.command.run({ command: 'clear', args: '', ...RUN })
   expect(asked).toHaveLength(0)
 })
+
+test('a bare desktop PATH still finds Homebrew tools', async ($, on) => {
+  const runs: { argv: readonly string[]; path: string | undefined }[] = []
+  mock.store(on)
+  mock.env(on, { HOME: '/Users/test', PATH: '/usr/bin:/bin:/usr/sbin:/sbin' })
+  mock.clock(on)
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('fs.exists', (_$, e) => ({ value: e.path === '/opt/homebrew/bin/docker' }))
+  on('process.run', (_$, e) => {
+    runs.push({ argv: e.argv, path: e.init?.env?.PATH })
+
+    return { value: { exitCode: 0, stdout: 'abc123\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+
+  await $.tool.call({ tool: 'Bash', command: 'cd app && docker compose up -d' })
+  await $.command.run({ command: 'services', args: '', ...RUN })
+
+  expect(runs.length).toBeGreaterThan(0)
+  expect(runs.every(i => i.argv[0] === '/opt/homebrew/bin/docker')).toBe(true)
+  expect(runs.every(i => i.path === '/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin')).toBe(true)
+})

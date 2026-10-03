@@ -11,6 +11,8 @@ type Mode = 'shadow' | 'active'
 // A cut that saves less than this is not worth replacing the native summary.
 const MIN_REDUCTION = 0.1
 
+const SECURITY_TOOL = '/usr/bin/security'
+
 let mode: Mode = 'shadow'
 let provider: Provider = 'openrouter'
 let hasWarnedMissingKey = false
@@ -35,12 +37,33 @@ function summaryOf(outcome: Outcome): string {
   return `${formatTokens(outcome.tokensBefore)} → ${formatTokens(outcome.tokensAfter)} (−${Math.round(saved * 100)}%) · ${cut} results cut · ${outcome.stage}${jev}`
 }
 
-// The key comes from the environment only: a sensitive plugin option has no
-// row in /config, and settings.json is versioned by the config snapshots.
+// The key comes from the environment, not a plugin option: a sensitive option
+// has no row in /config, and settings.json is versioned by the config snapshots.
+// The desktop app starts sessions without the shell profile that exports it, so
+// on macOS the Keychain item the profile reads from is asked directly as well.
 async function apiKeyOf($: EngineInterface): Promise<string | null> {
   const key = provider === 'openrouter' ? await $.env.get('OPENROUTER_API_KEY') : await $.env.get('TYPESAFE_API_KEY')
+  if (key !== undefined && key.length > 0) {
+    return key
+  }
 
-  return key !== undefined && key.length > 0 ? key : null
+  return keychainKeyOf($)
+}
+
+async function keychainKeyOf($: EngineInterface): Promise<string | null> {
+  if (!(await $.fs.exists(SECURITY_TOOL))) {
+    return null
+  }
+  try {
+    const result = await $.process.run([SECURITY_TOOL, 'find-generic-password', '-s', `${provider}-api-key`, '-w'], {
+      timeoutMs: 5_000,
+    })
+    const key = result.stdout.trim()
+
+    return result.exitCode === 0 && key.length > 0 ? key : null
+  } catch {
+    return null
+  }
 }
 
 // The transcript leaves the machine when Jev is asked; a project can opt out.

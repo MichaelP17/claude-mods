@@ -29,8 +29,45 @@ async function saveServices($: EngineInterface, list: Service[]): Promise<void> 
   $.ui.status(list.length === 0 ? undefined : `services ${list.length}`)
 }
 
+// The desktop app starts sessions with launchd's bare PATH, which lacks
+// Homebrew: docker, colima and brew would not be found there.
+const HOMEBREW_PATH = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin']
+
+async function searchPath($: EngineInterface): Promise<string[]> {
+  const current = ((await $.env.get('PATH')) ?? '/usr/bin:/bin:/usr/sbin:/sbin').split(':').filter(i => i !== '')
+
+  return [...current, ...HOMEBREW_PATH.filter(i => !current.includes(i))]
+}
+
+// The child's PATH alone may not steer the lookup of argv[0], so the
+// executable is resolved here; on any doubt the bare name is passed on.
+async function resolveExecutable($: EngineInterface, command: string, directories: readonly string[]): Promise<string> {
+  if (command.includes('/')) {
+    return command
+  }
+  for (const directory of directories) {
+    try {
+      if (await $.fs.exists(`${directory}/${command}`)) {
+        return `${directory}/${command}`
+      }
+    } catch {
+      return command
+    }
+  }
+
+  return command
+}
+
 async function runCommand($: EngineInterface, argv: readonly string[], cwd: string, timeoutMs: number) {
-  return $.process.run(argv, { cwd, timeoutMs, env: { HOMEBREW_NO_AUTO_UPDATE: '1' } })
+  const directories = await searchPath($)
+  const [command = '', ...args] = argv
+  const executable = await resolveExecutable($, command, directories)
+
+  return $.process.run([executable, ...args], {
+    cwd,
+    timeoutMs,
+    env: { HOMEBREW_NO_AUTO_UPDATE: '1', PATH: directories.join(':') },
+  })
 }
 
 async function stillRunning($: EngineInterface, service: Service): Promise<boolean> {

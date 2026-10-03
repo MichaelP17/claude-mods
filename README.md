@@ -10,6 +10,7 @@ Mods for [Claude Code](https://code.claude.com): small plugins of function hooks
 | [`service-radar`](service-radar/README.md) | Tracks services Claude starts detached — Docker Compose stacks, containers, Colima, Homebrew services — and stops them on request or at `/clear` |
 | [`cache-watch`](cache-watch/README.md) | Shows how long the prompt cache stays warm and suggests compacting a large context before it goes cold or after a milestone |
 | [`jev-compact`](jev-compact/README.md) | Compacts by cutting re-readable tool output instead of summarizing; local rules plus TypeSafe's Jev model decide what stays |
+| [`status-band`](status-band/README.md) | Shows the status line's figures — model, git, context, rate limit, cost — as a band above the prompt in the desktop app |
 
 Each mod is independent. Install only the ones you want.
 
@@ -37,10 +38,10 @@ Claude Code loads mods from the folders listed in the environment variable `CLAU
    cp ~/.claude/settings.json ~/.claude/settings.json.backup
    ```
 
-3. **Add the mod folders to `CLAUDE_CODE_PLUGIN_DIRS`.** Use absolute paths, separated by `:` (on Windows `;`). Keep every entry that is already there. This command appends all six mods and creates the `env` block if it is missing; remove the ones you do not want from `MODS`:
+3. **Add the mod folders to `CLAUDE_CODE_PLUGIN_DIRS`.** Use absolute paths, separated by `:` (on Windows `;`). Keep every entry that is already there. This command appends all seven mods and creates the `env` block if it is missing; remove the ones you do not want from `MODS`:
 
    ```sh
-   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard:$HOME/claude-mods/service-radar:$HOME/claude-mods/cache-watch:$HOME/claude-mods/jev-compact"
+   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard:$HOME/claude-mods/service-radar:$HOME/claude-mods/cache-watch:$HOME/claude-mods/jev-compact:$HOME/claude-mods/status-band"
    jq --arg mods "$MODS" '.env.CLAUDE_CODE_PLUGIN_DIRS = (if (.env.CLAUDE_CODE_PLUGIN_DIRS // "") == "" then $mods else .env.CLAUDE_CODE_PLUGIN_DIRS + ":" + $mods end)' \
      ~/.claude/settings.json > /tmp/settings.json && mv /tmp/settings.json ~/.claude/settings.json
    ```
@@ -49,7 +50,7 @@ Claude Code loads mods from the folders listed in the environment variable `CLAU
 
 4. **Run the mod-specific setup** described in each mod's README. `config-snapshots` needs `claude-config init`; `jev-compact` needs an OpenRouter or TypeSafe API key in the environment for Jev and runs on local rules alone without one.
 
-5. **Restart Claude Code.** Mods are loaded at startup.
+5. **Restart Claude Code.** Mods are loaded at startup. The desktop app reads the same `env` block, so the mods load there too once it is restarted.
 
 6. **Check that they loaded:** typing `/` lists `/snapshot`, `/snapshots` and `/rollback` when `config-snapshots` is active, and `/jev-preview` when `jev-compact` is; the other mods show themselves when they act, as described in their READMEs. A mod that fails to load is named in a dim line in the transcript; `claude --debug` shows the reason.
 
