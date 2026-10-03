@@ -2,6 +2,6 @@
   "name": "status-band",
   "version": "0.1.0",
   "author": { "name": "Michael Prömpler" },
-  "description": "Shows the status line's figures in the footer under the prompt in the desktop app, where no status line exists",
+  "description": "Shows context fill and usage limits in the footer under the prompt in the desktop app, where no status line exists",
   "types": "./types/index.d.ts"
 }

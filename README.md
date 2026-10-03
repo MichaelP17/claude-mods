@@ -10,7 +10,7 @@ Mods for [Claude Code](https://code.claude.com): small plugins of function hooks
 | [`service-radar`](service-radar/README.md) | Tracks services Claude starts detached — Docker Compose stacks, containers, Colima, Homebrew services — and stops them on request or at `/clear` |
 | [`cache-watch`](cache-watch/README.md) | Shows how long the prompt cache stays warm and suggests compacting a large context before it goes cold or after a milestone |
 | [`jev-compact`](jev-compact/README.md) | Compacts by cutting re-readable tool output instead of summarizing; local rules plus TypeSafe's Jev model decide what stays |
-| [`status-band`](status-band/README.md) | Shows the status line's figures — git, context, rate limit, cost — in the footer under the prompt in the desktop app |
+| [`status-band`](status-band/README.md) | Shows context fill and the five-hour and weekly usage limits in the footer under the prompt in the desktop app |
 
 Each mod is independent. Install only the ones you want.
 

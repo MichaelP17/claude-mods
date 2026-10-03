@@ -1,64 +1,50 @@
 import type { On, RenderSurface } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-const FOOTER = {
-  component: 'SessionMode',
-  props: { modes: [] },
-} as const
-
 function fakeSession(on: On, surfaces: readonly RenderSurface[]) {
-  mock.env(on, { HOME: '/Users/test' })
   mock.clock(on)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('classic.UserPromptSubmit', () => ({}))
+  on('session.surfaces', () => ({ value: surfaces }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: { tokens: 100_000, window: 1_000_000, percent: 10 },
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 74, resetsAt: '2026-10-03T14:00:00Z' },
+        { kind: 'seven_day', percentUsed: 98, resetsAt: '2026-10-07T09:00:00Z' },
+      ],
+      cost: { usd: 1.5 },
+    },
+  }))
   on('ui.render', { component: 'SessionMode' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
 
     return <Text>engine footer</Text>
   })
-  on('session.surfaces', () => ({ value: surfaces }))
-  on('session.model', () => ({ value: 'claude-opus-5-5[1m]' }))
-  on('session.cwd', () => ({ value: '/Users/test/Projects/app' }))
-  on('session.usage', () => ({
-    value: {
-      startedAt: 0,
-      context: { tokens: 420_000, window: 1_000_000, percent: 42 },
-      rateLimits: [{ kind: 'five_hour', percentUsed: 23, resetsAt: '2026-10-03T14:00:00Z' }],
-      cost: { usd: 1.5 },
-    },
-  }))
-  on('settings.read', () => ({ value: { fastMode: true } }))
-  on('process.run', (_$, e) => {
-    const stdout = e.argv.includes('status') ? '# branch.oid abcdef1234\n# branch.head main\n1 .M N... a b c d e f.ts\n' : '.git\n.git\n/Users/test/Projects/app\n'
-
-    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-  })
 }
 
-test('the footer shows the status line figures on the desktop only', async ($, on) => {
+test('the footer shows context and both limits on the desktop only', async ($, on) => {
   fakeSession(on, ['terminal', 'desktop'])
-  await $.session.start({ cwd: '/Users/test/Projects/app', surface: 'terminal', isInteractive: true })
-  await $.classic.UserPromptSubmit({ prompt: 'hi', permission_mode: 'plan' })
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
 
-  const desktop = await $.ui.mount({ plugin: 'status-band', surface: 'desktop', ...FOOTER })
-  for (const text of ['plan', 'fast', '~/Projects/app', '⎇ main', '●1', ' 42%', '23%', '$1.50']) {
+  const desktop = await $.ui.mount({ plugin: 'status-band', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
+  for (const text of ['C ', '10%', '5h ', '74%', 'W ', '98%']) {
     expect(await desktop.find({ type: 'Text', text })).toBeDefined()
   }
-  expect(await desktop.find({ type: 'Text', text: 'Opus 5.5' })).toBeUndefined()
   await desktop.unmount()
 
-  const terminal = await $.ui.mount({ plugin: 'status-band', surface: 'terminal', ...FOOTER })
+  const terminal = await $.ui.mount({ plugin: 'status-band', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
   expect(await terminal.find({ type: 'Text', text: 'engine footer' })).toBeDefined()
-  expect(await terminal.find({ type: 'Text', text: '⎇ main' })).toBeUndefined()
+  expect(await terminal.find({ type: 'Text', text: '10%' })).toBeUndefined()
   await terminal.unmount()
 })
 
-test('the engine\'s own mode labels stay in the footer', async ($, on) => {
+test('the engine\'s own mode labels stay in front', async ($, on) => {
   fakeSession(on, ['desktop'])
-  await $.session.start({ cwd: '/Users/test/Projects/app', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ plugin: 'status-band', surface: 'desktop', component: 'SessionMode', props: { modes: ['focus'] } })
-  expect(await ui.find({ type: 'Text', text: 'focus' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '⎇ main' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'focus · ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '74%' })).toBeDefined()
   await ui.unmount()
 })
