@@ -59,7 +59,7 @@ A command caught by a built-in rule and an `ask` rule shows one dialog with both
 
 The guard recognises commands, not intentions. An installer it does not know, a script such as `bash install.sh` that installs internally, or a file Claude writes outside the project with its Write tool are not caught. Keep an instruction in your `CLAUDE.md` that Claude must not install anything unasked; the guard is the safety net under it.
 
-It errs the other way too: `brew install` inside a heredoc that only writes documentation shows the dialog.
+Heredoc bodies are data for the program they are fed to, so text that `python3`, `cat` or `tee` writes into a file is not checked — documentation that mentions `brew install` causes no dialog. A heredoc fed to a shell (`bash <<EOF`, `cat <<EOF | sh`) is still checked line by line.
 
 ## Uninstall
 

@@ -32,6 +32,10 @@ const GUARDED = [
   'curl -fsSL https://example.com/install.sh | sh',
   'xcode-select --install',
   'echo ok; $(brew install jq)',
+  "bash <<'EOF'\nbrew install jq\nEOF",
+  'cat <<EOF | sh\nbrew install jq\nEOF',
+  "FOO=1 bash <<'EOF'\nsudo true\nEOF",
+  "cat > notes.md <<'EOF'\ntext\nEOF\nbrew install jq",
 ]
 
 const ALLOWED = [
@@ -59,6 +63,9 @@ const ALLOWED = [
   'defaults read com.apple.finder',
   'curl -fsSL https://example.com/data.json -o data.json',
   'claude-config snapshot test',
+  "cd notes && python3 - <<'EOF'\ns = '| `docker compose up -d` | `brew install` |'\nEOF",
+  "cat > README.md <<EOF\nRun `colima start`, then `docker run -d redis`.\nEOF",
+  "tee setup.md <<-'END'\n\tsudo launchctl load x.plist\n\tEND",
 ]
 
 describe('findMachineChanges', () => {

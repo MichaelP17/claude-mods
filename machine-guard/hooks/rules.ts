@@ -160,6 +160,45 @@ const RULES: Rule[] = [
   },
 ]
 
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'fish', 'ssh', 'sudo', 'xargs', 'eval', 'source', '.'])
+
+// A heredoc body is data for the program it is fed to; only a shell turns it
+// back into commands. Bodies fed to anything else (python3, cat, tee) are left
+// out of the check, so writing documentation that mentions commands is not
+// mistaken for running them.
+export function stripHeredocs(command: string): string {
+  const lines = command.split('\n')
+  const kept: string[] = []
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index] ?? ''
+    kept.push(line)
+    index += 1
+    const marker = /<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/.exec(line)
+    if (marker === null) {
+      continue
+    }
+    const segment = line.slice(0, marker.index).split(/&&|\|\||[;|]/).pop() ?? ''
+    const program = segment.trim().split(/\s+/).find(i => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(i)) ?? ''
+    const pipesIntoShell = /\|\s*(sudo\s+)?(ba|z|da)?sh\b/.test(line.slice(marker.index))
+    if (SHELLS.has(program.split('/').pop() ?? '') || pipesIntoShell) {
+      continue
+    }
+    const delimiter = marker[3]
+    const stripsTabs = marker[1] === '-'
+    while (index < lines.length) {
+      const body = lines[index] ?? ''
+      index += 1
+      if ((stripsTabs ? body.replace(/^\t+/, '') : body) === delimiter) {
+        kept.push(body)
+        break
+      }
+    }
+  }
+
+  return kept.join('\n')
+}
+
 // A command like `cd app && brew install jq` is judged per segment, so a
 // harmless first part never hides the changing one.
 function splitSegments(command: string): string[] {
@@ -179,8 +218,9 @@ function tokenize(segment: string): string[] {
   return tokens.slice(start)
 }
 
-export function findMachineChanges(command: string): Finding[] {
+export function findMachineChanges(fullCommand: string): Finding[] {
   const findings: Finding[] = []
+  const command = stripHeredocs(fullCommand)
 
   if (/\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z)?sh\b/.test(command)) {
     findings.push({ segment: command.trim(), reason: 'pipes a downloaded script into a shell' })

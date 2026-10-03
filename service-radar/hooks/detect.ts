@@ -4,6 +4,45 @@ export type Detected = { label: string; cwd: string; stop: string[]; check: Serv
 
 const COMPOSE_GLOBAL_FLAGS = new Set(['-f', '--file', '-p', '--project-name', '--profile', '--env-file', '--project-directory'])
 
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'fish', 'ssh', 'sudo', 'xargs', 'eval', 'source', '.'])
+
+// A heredoc body is data for the program it is fed to; only a shell turns it
+// back into commands. Bodies fed to anything else (python3, cat, tee) are left
+// out of the check, so writing documentation that mentions commands is not
+// mistaken for running them.
+export function stripHeredocs(command: string): string {
+  const lines = command.split('\n')
+  const kept: string[] = []
+  let index = 0
+  while (index < lines.length) {
+    const line = lines[index] ?? ''
+    kept.push(line)
+    index += 1
+    const marker = /<<(-?)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/.exec(line)
+    if (marker === null) {
+      continue
+    }
+    const segment = line.slice(0, marker.index).split(/&&|\|\||[;|]/).pop() ?? ''
+    const program = segment.trim().split(/\s+/).find(i => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(i)) ?? ''
+    const pipesIntoShell = /\|\s*(sudo\s+)?(ba|z|da)?sh\b/.test(line.slice(marker.index))
+    if (SHELLS.has(program.split('/').pop() ?? '') || pipesIntoShell) {
+      continue
+    }
+    const delimiter = marker[3]
+    const stripsTabs = marker[1] === '-'
+    while (index < lines.length) {
+      const body = lines[index] ?? ''
+      index += 1
+      if ((stripsTabs ? body.replace(/^\t+/, '') : body) === delimiter) {
+        kept.push(body)
+        break
+      }
+    }
+  }
+
+  return kept.join('\n')
+}
+
 function splitSegments(command: string): string[] {
   return command
     .split(/&&|\|\||[;\n]/)
@@ -99,7 +138,7 @@ export function detectServices(command: string, startCwd: string, home: string, 
   const found: Detected[] = []
   let cwd = startCwd
 
-  for (const segment of splitSegments(command)) {
+  for (const segment of splitSegments(stripHeredocs(command))) {
     const [tool, ...args] = tokenize(segment)
     if (tool === undefined) {
       continue

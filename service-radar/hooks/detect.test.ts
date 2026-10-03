@@ -48,6 +48,14 @@ describe('detectServices', () => {
     expect(found?.check).toBeNull()
   })
 
+  test('commands written into a file through a heredoc are ignored', () => {
+    expect(detectServices("cat > notes.md <<'EOF'\ndocker compose up -d\ncolima start\nEOF", '/repo', HOME, '')).toEqual([])
+  })
+
+  test('a heredoc fed to a shell is still read', () => {
+    expect(detectServices("bash <<'EOF'\ncolima start\nEOF", '/repo', HOME, '')[0]?.stop).toEqual(['colima', 'stop'])
+  })
+
   test('ordinary commands are ignored', () => {
     expect(detectServices('docker ps && colima status && npm test', '/repo', HOME, '')).toEqual([])
   })
