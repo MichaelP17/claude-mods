@@ -90,3 +90,7 @@ claude plugin test machine-guard       # runs the mod's tests
 ```
 
 Claude Code writes `.claude-plugin/types/` and a `tsconfig.json` into every mod it loads; both are git-ignored. With them in place, `tsc -p <mod>` type-checks the mod.
+
+## License
+
+[MIT](LICENSE)
