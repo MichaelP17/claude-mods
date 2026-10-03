@@ -170,7 +170,7 @@ export const register: Register = on => {
   })
 
   // Other mods pin their state with $.ui.status, which the terminal draws under
-  // the prompt; the band repeats those lines so they reach the desktop too.
+  // the prompt; the footer repeats those lines so they reach the desktop too.
   on('ui.status', async ($, e, next) => {
     const source = next.origin.plugin
     if (source !== PLUGIN) {
@@ -184,38 +184,34 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.surface === 'terminal' || e.props.hasSurvey) {
+  // The desktop draws the SessionMode labels in the footer under the prompt,
+  // beside its own model picker, so the model itself is left out there.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    if (e.surface === 'terminal') {
       return next(e)
     }
     const current = await read($, snapshot)
-    const pinned = Object.entries(await read($, statuses))
-    const below = await next(e)
+    const pinned = Object.values(await read($, statuses))
     if (current === null && pinned.length === 0) {
-      return below
+      return next(e)
     }
-    // An `engine` element means nothing beneath drew a band; it cannot be nested.
-    const beneath = below.type === 'engine' ? null : below
     const { Box, Text } = $.ui.resolve(e)
+    const segments = current === null ? [] : segmentsOf(current, { withModel: false })
+    const leading = [...e.props.modes, ...pinned]
 
     return (
-      <Box flexDirection="column">
-        {current === null ? null : (
-          <Box flexDirection="row" flexWrap="wrap">
-            {segmentsOf(current).map((segment, index) => (
-              <Text key={`segment-${index}`}>
-                {index === 0 ? null : <Text dimColor> │ </Text>}
-                {segment.map((span, position) => (
-                  <Text key={`span-${position}`} color={span.color} dimColor={span.isDim}>
-                    {span.text}
-                  </Text>
-                ))}
+      <Box flexDirection="row" flexWrap="wrap">
+        {leading.length === 0 ? null : <Text dimColor>{leading.join(' · ')}</Text>}
+        {segments.map((segment, index) => (
+          <Text key={`segment-${index}`}>
+            {index === 0 && leading.length === 0 ? null : <Text dimColor> │ </Text>}
+            {segment.map((span, position) => (
+              <Text key={`span-${position}`} color={span.color} dimColor={span.isDim}>
+                {span.text}
               </Text>
             ))}
-          </Box>
-        )}
-        {pinned.length === 0 ? null : <Text dimColor>{pinned.map(([, text]) => text).join(' · ')}</Text>}
-        {beneath}
+          </Text>
+        ))}
       </Box>
     )
   })

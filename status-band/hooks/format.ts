@@ -187,8 +187,8 @@ function rateLimitSpans(snapshot: Snapshot): Span[] {
   ]
 }
 
-export function segmentsOf(snapshot: Snapshot): Span[][] {
-  const segments: Span[][] = [[{ text: modelName(snapshot.model), color: COLORS.cyan }]]
+export function segmentsOf(snapshot: Snapshot, options: { withModel: boolean } = { withModel: true }): Span[][] {
+  const segments: Span[][] = options.withModel ? [[{ text: modelName(snapshot.model), color: COLORS.cyan }]] : []
 
   const mode = modeSpans(snapshot)
   if (mode.length > 0) {
