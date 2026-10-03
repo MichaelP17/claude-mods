@@ -43,6 +43,7 @@ function fixedAsker(probabilities: Record<string, number>): { ask: Asker; questi
     return {
       answers: new Map(Object.keys(asked).map(i => [i, probabilities[i.replace(/^keep_/, '')] ?? 0.9])),
       inputTokens: 1200,
+      costUsd: null,
     }
   }
 

@@ -47,7 +47,7 @@ Claude Code loads mods from the folders listed in the environment variable `CLAU
 
    If `~/.claude/settings.json` does not exist yet, create it with `{}` first.
 
-4. **Run the mod-specific setup** described in each mod's README. `config-snapshots` needs `claude-config init`; `jev-compact` needs a TypeSafe API key for Jev and runs on local rules alone without one.
+4. **Run the mod-specific setup** described in each mod's README. `config-snapshots` needs `claude-config init`; `jev-compact` needs an OpenRouter or TypeSafe API key in the environment for Jev and runs on local rules alone without one.
 
 5. **Restart Claude Code.** Mods are loaded at startup.
 
@@ -60,7 +60,7 @@ You can give Claude Code the URL of this repository and ask it to install the mo
 - Ask the user which mods to install and where to clone the repository if they have not said so; default to `~/claude-mods`.
 - Follow the steps under [Installation](#installation) in order. Back up `settings.json` before changing it, merge into an existing `CLAUDE_CODE_PLUGIN_DIRS` instead of replacing it, and never remove other keys from `settings.json`.
 - For `config-snapshots`, follow its README: skip `claude-config init` if `~/.claude-config.git` already exists, and ask the user for a remote URL instead of inventing one.
-- For `jev-compact`, tell the user that asking Jev sends conversation excerpts to TypeSafe's API, and let them set the API key themselves in `/config`; never write a key into `settings.json`.
+- For `jev-compact`, tell the user that asking Jev sends conversation excerpts to OpenRouter or TypeSafe, and let them put the API key into their environment themselves as its README describes; never write a key into `settings.json` or a shell profile.
 - Do not install anything with a package manager. If `git`, `jq` or `bash` is missing, tell the user the command to install it and wait.
 - Finish by telling the user to restart Claude Code, then how to check each installed mod.
 

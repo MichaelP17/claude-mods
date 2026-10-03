@@ -27,7 +27,7 @@ Reports land in `~/.claude/jev-compact/runs/`, one JSON file per run, with every
 
 ## What leaves the machine
 
-Asking Jev sends the conversation to TypeSafe's API (`api.typesafe.ai`): message texts, tool inputs and a preview of each tool output, abridged to fit Jev's input limit of about 25k tokens. Before sending, the mod:
+Asking Jev sends the conversation to OpenRouter (`openrouter.ai`), which routes it to TypeSafe, or straight to TypeSafe (`api.typesafe.ai`), depending on `provider`: message texts, tool inputs and a preview of each tool output, abridged to fit Jev's input limit of about 25k tokens. Before sending, the mod:
 
 - replaces private keys, common token formats (`sk-…`, `ghp_…`, `AKIA…`, `xox…`) and `password=`/`token=`/`api_key=` values with `[redacted]`
 - sends no output preview for files such as `.env`, `*.pem`, `id_rsa`, `credentials` or `secrets.*`
@@ -45,7 +45,7 @@ The local rules still run there. Without an API key, only the local rules run ev
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `mode` | `shadow` | `shadow` reports only, `active` replaces the native compaction |
-| `apiKey` | — | TypeSafe API key, kept in secure storage; `TYPESAFE_API_KEY` in the environment works as well |
+| `provider` | `openrouter` | Where Jev is called: `openrouter` or `typesafe` |
 | `targetTokens` | 150000 | Size the stages aim for |
 | `keepThreshold` | 0.5 | Keep probability from which an output stays |
 | `aggressiveThreshold` | 0.75 | Threshold used when the normal one misses the target |
@@ -53,7 +53,21 @@ The local rules still run there. Without an API key, only the local rules run ev
 | `previewChars` | 300 | How much of each output Jev sees; 0 sends none |
 | `keepHeadChars` | 300 | How much of a cut output stays |
 
-Set the API key in `/config`, so it lands in secure storage rather than in `settings.json`.
+## API key
+
+The key is read from the environment: `OPENROUTER_API_KEY` for `provider: openrouter`, `TYPESAFE_API_KEY` for `provider: typesafe`. It is deliberately not a plugin option: a sensitive option has no row in `/config`, and a plain one would end up in `settings.json`.
+
+On macOS the key can live in the Keychain and be exported from there by the shell profile:
+
+```sh
+security add-generic-password -a "$USER" -s openrouter-api-key -w
+```
+
+```sh
+export OPENROUTER_API_KEY="$(security find-generic-password -a "$USER" -s openrouter-api-key -w 2>/dev/null)"
+```
+
+The first command asks for the key and stores it; the second line belongs in `~/.zshrc`. Claude Code reads the variable when it starts, so restart it from a new shell afterwards.
 
 ## Details and limits
 

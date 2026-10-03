@@ -3,8 +3,14 @@ import type { SessionMessage } from 'claude-code'
 import { isPinned } from './prune'
 import type { Call } from './prune'
 
-export const JEV_URL = 'https://api.typesafe.ai/v1/systemone'
-export const JEV_MODEL = 'jev-latest'
+export type Provider = 'openrouter' | 'typesafe'
+
+// Both serve the same System One API; OpenRouter bills through its own account.
+export const ENDPOINTS: Record<Provider, { url: string; model: string }> = {
+  openrouter: { url: 'https://openrouter.ai/api/v1/systemone', model: '~typesafe/jev-latest' },
+  typesafe: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' },
+}
+
 export const JEV_USD_PER_MILLION = 0.042
 
 // Jev reads at most about 32k tokens per request; the state is sent whole with
@@ -22,7 +28,7 @@ export type HttpFetch = (
 
 export type JevQuestion = { type: 'noul'; instructions: string }
 
-export type JevReply = { answers: Map<string, number>; inputTokens: number }
+export type JevReply = { answers: Map<string, number>; inputTokens: number; costUsd: number | null }
 
 export type Asker = (state: object, questions: Record<string, JevQuestion>) => Promise<JevReply>
 
@@ -195,19 +201,21 @@ export function batchesOf(calls: readonly Call[], stateTokens: number): Call[][]
   return batches
 }
 
-export function jevAsker(fetch: HttpFetch, apiKey: string): Asker {
+export function jevAsker(fetch: HttpFetch, provider: Provider, apiKey: string): Asker {
+  const endpoint = ENDPOINTS[provider]
+
   return async (state, questions) => {
-    const response = await fetch(JEV_URL, {
+    const response = await fetch(endpoint.url, {
       method: 'POST',
       headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: JEV_MODEL, state, questions }),
+      body: JSON.stringify({ model: endpoint.model, state, questions }),
     })
     if (!response.ok) {
       throw new Error(`Jev answered ${response.status}: ${response.text.slice(0, 200)}`)
     }
     const parsed = JSON.parse(response.text) as {
       answers?: Record<string, { noul?: unknown }>
-      usage?: { input_tokens?: number }
+      usage?: { input_tokens?: number; cost?: unknown }
     }
     const answers = new Map<string, number>()
     for (const name of Object.keys(questions)) {
@@ -218,6 +226,12 @@ export function jevAsker(fetch: HttpFetch, apiKey: string): Asker {
       answers.set(name, value)
     }
 
-    return { answers, inputTokens: parsed.usage?.input_tokens ?? estimateTokens(JSON.stringify({ state, questions })) }
+    const cost = parsed.usage?.cost
+
+    return {
+      answers,
+      inputTokens: parsed.usage?.input_tokens ?? estimateTokens(JSON.stringify({ state, questions })),
+      costUsd: typeof cost === 'number' && Number.isFinite(cost) ? cost : null,
+    }
   }
 }

@@ -108,6 +108,7 @@ export async function pruneTranscript(
   const probabilities = new Map<string, number>()
   let jevRequests = 0
   let jevTokens = 0
+  let jevCostUsd = 0
   let jevError: string | null = null
 
   let dropped = new Set(superseded)
@@ -130,6 +131,7 @@ export async function pruneTranscript(
       for (const reply of replies) {
         jevRequests += 1
         jevTokens += reply.inputTokens
+        jevCostUsd += reply.costUsd ?? (reply.inputTokens * JEV_USD_PER_MILLION) / 1_000_000
         for (const [name, probability] of reply.answers) {
           probabilities.set(name.replace(/^keep_/, ''), probability)
         }
@@ -158,7 +160,7 @@ export async function pruneTranscript(
     decisions: decisionsOf(calls, superseded, candidateIds, probabilities, dropped),
     jevRequests,
     jevTokens,
-    jevCostUsd: (jevTokens * JEV_USD_PER_MILLION) / 1_000_000,
+    jevCostUsd,
     jevError,
   }
 }

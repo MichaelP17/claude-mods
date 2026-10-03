@@ -3,6 +3,7 @@ import type { EngineInterface, Register, SessionMessage } from 'claude-code'
 import { pruneTranscript } from './compact'
 import type { Outcome, Settings } from './compact'
 import { jevAsker } from './jev'
+import type { Provider } from './jev'
 import { charsOf } from './prune'
 
 type Mode = 'shadow' | 'active'
@@ -11,7 +12,7 @@ type Mode = 'shadow' | 'active'
 const MIN_REDUCTION = 0.1
 
 let mode: Mode = 'shadow'
-let configuredKey = ''
+let provider: Provider = 'openrouter'
 let hasWarnedMissingKey = false
 let settings: Settings = {
   keepThreshold: 0.5,
@@ -34,13 +35,12 @@ function summaryOf(outcome: Outcome): string {
   return `${formatTokens(outcome.tokensBefore)} → ${formatTokens(outcome.tokensAfter)} (−${Math.round(saved * 100)}%) · ${cut} results cut · ${outcome.stage}${jev}`
 }
 
+// The key comes from the environment only: a sensitive plugin option has no
+// row in /config, and settings.json is versioned by the config snapshots.
 async function apiKeyOf($: EngineInterface): Promise<string | null> {
-  if (configuredKey.length > 0) {
-    return configuredKey
-  }
-  const fromEnvironment = await $.env.get('TYPESAFE_API_KEY')
+  const key = provider === 'openrouter' ? await $.env.get('OPENROUTER_API_KEY') : await $.env.get('TYPESAFE_API_KEY')
 
-  return fromEnvironment !== undefined && fromEnvironment.length > 0 ? fromEnvironment : null
+  return key !== undefined && key.length > 0 ? key : null
 }
 
 // The transcript leaves the machine when Jev is asked; a project can opt out.
@@ -64,9 +64,10 @@ async function run($: EngineInterface, messages: readonly SessionMessage[], allo
   const key = allowJev ? await apiKeyOf($) : null
   if (allowJev && key === null && !hasWarnedMissingKey) {
     hasWarnedMissingKey = true
-    $.ui.toast('jev-compact: no TypeSafe API key set, using local rules only', { timeoutMs: 10_000 })
+    const variable = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'TYPESAFE_API_KEY'
+    $.ui.toast(`jev-compact: ${variable} is not set, using local rules only`, { timeoutMs: 10_000 })
   }
-  const ask = key === null ? null : jevAsker((url, init) => $.http.fetch(url, init), key)
+  const ask = key === null ? null : jevAsker((url, init) => $.http.fetch(url, init), provider, key)
 
   return pruneTranscript(messages, tokensBefore, settings, ask)
 }
@@ -79,7 +80,7 @@ async function writeReport($: EngineInterface, kind: string, outcome: Outcome): 
   const stamp = new Date(await $.clock.now()).toISOString().replace(/[:.]/g, '-')
   const path = `${home}/.claude/jev-compact/runs/${stamp}-${kind}.json`
   const { messages: _messages, ...report } = outcome
-  await $.fs.write(path, JSON.stringify({ kind, mode, settings, ...report }, null, 2))
+  await $.fs.write(path, JSON.stringify({ kind, mode, provider, settings, ...report }, null, 2))
 
   return path
 }
@@ -106,7 +107,7 @@ function previewText(outcome: Outcome, reportPath: string | null): string {
 
 export const register: Register = (on, options) => {
   mode = options.mode === 'active' ? 'active' : 'shadow'
-  configuredKey = typeof options.apiKey === 'string' ? options.apiKey : ''
+  provider = options.provider === 'typesafe' ? 'typesafe' : 'openrouter'
   settings = {
     keepThreshold: Number(options.keepThreshold ?? 0.5),
     aggressiveThreshold: Number(options.aggressiveThreshold ?? 0.75),

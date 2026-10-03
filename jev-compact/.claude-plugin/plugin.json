@@ -1,22 +1,30 @@
 {
   "name": "jev-compact",
   "version": "0.1.0",
-  "author": { "name": "Michael Prömpler" },
+  "author": {
+    "name": "Michael Prömpler"
+  },
   "description": "Compacts by cutting tool output that can be re-read instead of summarizing the conversation; Jev decides what stays",
   "userConfig": {
     "mode": {
       "type": "string",
       "title": "Mode",
       "description": "shadow: compute and report what would be cut, but let the native compaction run. active: replace the native compaction.",
-      "options": ["shadow", "active"],
+      "options": [
+        "shadow",
+        "active"
+      ],
       "default": "shadow"
     },
-    "apiKey": {
+    "provider": {
       "type": "string",
-      "title": "TypeSafe API key",
-      "description": "Key for Jev. Without one, only the local rules run. TYPESAFE_API_KEY in the environment works as well.",
-      "sensitive": true,
-      "default": ""
+      "title": "Jev provider",
+      "description": "Where Jev is called. openrouter reads OPENROUTER_API_KEY, typesafe reads TYPESAFE_API_KEY from the environment; without the key only the local rules run.",
+      "options": [
+        "openrouter",
+        "typesafe"
+      ],
+      "default": "openrouter"
     },
     "targetTokens": {
       "type": "number",
