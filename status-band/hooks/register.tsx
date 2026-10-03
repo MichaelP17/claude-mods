@@ -64,27 +64,32 @@ export const register: Register = on => {
 
   // The desktop draws the SessionMode labels in the footer under the prompt,
   // beside its model and effort pickers: the one slot with room for a short line.
+  // Other mods may draw there too; what they drew beneath stays.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     if (e.surface === 'terminal') {
       return next(e)
     }
     const current = await read($, usage)
     const spans = current === null ? [] : spansOf(current)
+    const below = await next(e)
     if (spans.length === 0) {
-      return next(e)
+      return below
     }
-    const { Text } = $.ui.resolve(e)
-    const modes = e.props.modes.length === 0 ? '' : `${e.props.modes.join(' & ')} · `
+    const { Box, Text } = $.ui.resolve(e)
+    const modes = e.props.modes.length === 0 ? null : <Text dimColor>{`${e.props.modes.join(' & ')} · `}</Text>
 
     return (
-      <Text wrap="truncate-end">
-        {modes === '' ? null : <Text dimColor>{modes}</Text>}
-        {spans.map((span, index) => (
-          <Text key={`span-${index}`} color={span.color} dimColor={span.isDim}>
-            {span.text}
-          </Text>
-        ))}
-      </Text>
+      <Box flexDirection="row">
+        {below.type === 'engine' ? modes : below}
+        {below.type === 'engine' ? null : <Text dimColor> · </Text>}
+        <Text wrap="truncate-end">
+          {spans.map((span, index) => (
+            <Text key={`span-${index}`} color={span.color} dimColor={span.isDim}>
+              {span.text}
+            </Text>
+          ))}
+        </Text>
+      </Box>
     )
   })
 }

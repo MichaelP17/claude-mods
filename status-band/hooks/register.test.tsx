@@ -1,7 +1,7 @@
 import type { On, RenderSurface } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-function fakeSession(on: On, surfaces: readonly RenderSurface[]) {
+function fakeSession(on: On, surfaces: readonly RenderSurface[], below: string | null = 'engine footer') {
   mock.clock(on)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.surfaces', () => ({ value: surfaces }))
@@ -17,9 +17,12 @@ function fakeSession(on: On, surfaces: readonly RenderSurface[]) {
     },
   }))
   on('ui.render', { component: 'SessionMode' }, ($, e) => {
+    if (below === null) {
+      return { type: 'engine', ref: 0 }
+    }
     const { Text } = $.ui.resolve(e)
 
-    return <Text>engine footer</Text>
+    return <Text>{below}</Text>
   })
 }
 
@@ -40,11 +43,21 @@ test('the footer shows context and both limits on the desktop only', async ($, o
 })
 
 test('the engine\'s own mode labels stay in front', async ($, on) => {
-  fakeSession(on, ['desktop'])
+  fakeSession(on, ['desktop'], null)
   await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ plugin: 'status-band', surface: 'desktop', component: 'SessionMode', props: { modes: ['focus'] } })
   expect(await ui.find({ type: 'Text', text: 'focus · ' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '74%' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a footer another mod drew stays in front', async ($, on) => {
+  fakeSession(on, ['desktop'], '🍄 1-1')
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
+
+  const ui = await $.ui.mount({ plugin: 'status-band', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
+  expect(await ui.find({ type: 'Text', text: '🍄 1-1' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '74%' })).toBeDefined()
   await ui.unmount()
 })
