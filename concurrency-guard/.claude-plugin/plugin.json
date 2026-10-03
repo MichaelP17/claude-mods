@@ -1,0 +1,21 @@
+{
+  "name": "concurrency-guard",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Caps parallel subagents and monitors; more need a stated reason and the user's approval",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "maxSubagents": {
+      "type": "number",
+      "title": "Max parallel subagents",
+      "description": "Subagents that may run at the same time before Claude has to ask with a reason.",
+      "default": 4
+    },
+    "maxMonitors": {
+      "type": "number",
+      "title": "Max parallel monitors",
+      "description": "Monitors that may run at the same time before Claude has to ask with a reason.",
+      "default": 3
+    }
+  }
+}

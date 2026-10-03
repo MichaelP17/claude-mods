@@ -1,0 +1,466 @@
+#!/bin/bash
+set -euo pipefail
+
+CLAUDE_HOME="${CLAUDE_CONFIG_HOME:-$HOME/.claude}"
+GIT_DIR_PATH="${CLAUDE_CONFIG_GIT_DIR:-$HOME/.claude-config.git}"
+INVENTORY_DIR="$CLAUDE_HOME/inventory"
+
+# Reading the inventory must never change the machine; brew would otherwise
+# auto-update and migrate formulae on every snapshot.
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_ENV_HINTS=1
+
+# Each machine writes only its own inventory folder, so machines sharing the
+# repository never conflict over it.
+if command -v scutil >/dev/null; then
+    HOST_NAME="$(scutil --get LocalHostName)"
+else
+    HOST_NAME="${COMPUTERNAME:-$(hostname)}"
+fi
+HOST_NAME="$(printf '%s' "$HOST_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g')"
+HOST_INVENTORY_DIR="$INVENTORY_DIR/$HOST_NAME"
+
+repo() {
+    git --git-dir="$GIT_DIR_PATH" --work-tree="$CLAUDE_HOME" "$@"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: claude-config <command> [arguments]
+
+  init [remote-url]           Create the snapshot repository and record a first snapshot "baseline"
+  snapshot <name> [message]   Record the current config and tool inventory under <name>
+  list                        Show all snapshots
+  status                      Show what changed since the last snapshot
+  diff <name> [--full]        Show what changed between <name> and now
+  rollback <name>             Restore the config of <name>, keeping history
+  brew-cleanup <name>         Uninstall Homebrew packages added since <name>, after confirmation
+  prune                       Delete plugin and marketplace caches no longer referenced
+
+Snapshots cover the allowlisted files in ~/.claude (see ~/.claude/.gitignore)
+plus an inventory of installed packages in ~/.claude/inventory/<machine>/.
+snapshot and rollback push to origin afterwards; CLAUDE_CONFIG_NO_PUSH=1 skips that.
+
+The repository lives at ~/.claude-config.git unless CLAUDE_CONFIG_GIT_DIR names another path.
+EOF
+}
+
+require_repo() {
+    if [[ ! -d "$GIT_DIR_PATH" ]]; then
+        echo "No snapshot repository at $GIT_DIR_PATH. Run 'claude-config init' first." >&2
+        exit 1
+    fi
+}
+
+# Tags cannot contain spaces, so "Initial proper mac snapshot" is stored as
+# initial-proper-mac-snapshot and the original wording becomes the message.
+slugify() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//'
+}
+
+require_snapshot() {
+    if ! repo rev-parse --verify --quiet "refs/tags/$1" >/dev/null; then
+        echo "Unknown snapshot: $1 (see 'claude-config list')" >&2
+        exit 1
+    fi
+}
+
+write_inventory() {
+    local target="$1"
+    mkdir -p "$target"
+    rm -f "$target"/*
+
+    if [[ -f "$HOME/.claude.json" ]]; then
+        jq --sort-keys '.mcpServers // {}' "$HOME/.claude.json" > "$target/mcp-servers.json"
+    fi
+    if command -v brew >/dev/null; then
+        brew bundle dump --file="$target/Brewfile" --force >/dev/null
+    fi
+    if command -v npm >/dev/null; then
+        npm ls -g --depth=0 --json 2>/dev/null \
+            | jq -r '.dependencies // {} | to_entries[] | "\(.key)@\(.value.version)"' \
+            | sort > "$target/npm-global.txt"
+    fi
+    if command -v cargo >/dev/null; then
+        cargo install --list | grep -v '^ ' | sort > "$target/cargo.txt"
+    fi
+    if command -v mise >/dev/null; then
+        (cd "$HOME" && mise ls --installed --no-header) | awk '{print $1 "@" $2}' | sort > "$target/mise.txt"
+    fi
+    if command -v dotnet >/dev/null; then
+        dotnet tool list -g | tail -n +3 | awk '{print $1 "@" $2}' | sort > "$target/dotnet-tools.txt"
+    fi
+    if command -v uv >/dev/null; then
+        uv tool list | grep -v '^-' | sort > "$target/uv-tools.txt"
+    fi
+    if command -v pipx >/dev/null; then
+        pipx list --short | sort > "$target/pipx.txt"
+    fi
+    if command -v winget >/dev/null; then
+        winget export --output "$target/winget.json" --accept-source-agreements >/dev/null 2>&1 || true
+    fi
+    write_mod_inventory "$target"
+}
+
+# Mods loaded from their own checkouts are recorded by commit, so a snapshot
+# says exactly which version of each mod was active.
+write_mod_inventory() {
+    local target="$1"
+    local directories=""
+    if [[ -f "$CLAUDE_HOME/settings.json" ]]; then
+        directories="$(jq -r '.env.CLAUDE_CODE_PLUGIN_DIRS // empty' "$CLAUDE_HOME/settings.json")"
+    fi
+    directories="${directories:-${CLAUDE_CODE_PLUGIN_DIRS:-}}"
+    if [[ -z "$directories" ]]; then
+        return
+    fi
+
+    local separator=':'
+    if [[ "${OS:-}" == "Windows_NT" ]]; then
+        separator=';'
+    fi
+    local entries=()
+    IFS="$separator" read -r -a entries <<<"$directories"
+
+    local directory
+    for directory in "${entries[@]}"; do
+        directory="${directory/#\~/$HOME}"
+        if ! git -C "$directory" rev-parse --git-dir >/dev/null 2>&1; then
+            echo "$(basename "$directory") no-git-checkout $directory"
+            continue
+        fi
+        local commit
+        commit="$(git -C "$directory" rev-parse --short HEAD 2>/dev/null || echo no-commit)"
+        local state=""
+        if [[ -n "$(git -C "$directory" status --porcelain -- . 2>/dev/null)" ]]; then
+            state=" uncommitted-changes"
+        fi
+        echo "$(basename "$directory") $commit$state $directory"
+    done | sort > "$target/mods.txt"
+}
+
+write_host_inventory() {
+    write_inventory "$HOST_INVENTORY_DIR"
+    # Snapshots before per-machine folders kept the inventory flat in inventory/.
+    find "$INVENTORY_DIR" -maxdepth 1 -type f -delete
+}
+
+# Snapshots taken before per-machine folders hold the files directly in inventory/.
+show_snapshot_inventory() {
+    local name="$1"
+    local base="$2"
+    repo show "$name:inventory/$HOST_NAME/$base" 2>/dev/null || repo show "$name:inventory/$base" 2>/dev/null || true
+}
+
+push_remote() {
+    if [[ "${CLAUDE_CONFIG_NO_PUSH:-}" == "1" ]]; then
+        echo "Push skipped (CLAUDE_CONFIG_NO_PUSH=1)."
+        return
+    fi
+    if [[ -z "$(repo remote)" ]]; then
+        return
+    fi
+    local error
+    if error="$(repo push --quiet --follow-tags origin HEAD 2>&1)"; then
+        echo "Pushed to origin."
+    else
+        echo "Warning: push failed, the snapshot stays local until the next successful push."
+        echo "$error" | sed 's/^/  /'
+    fi
+}
+
+# Unknown top-level entries are what a new tool drops into ~/.claude; they are
+# neither tracked nor ignored on purpose, so they get surfaced for a decision.
+report_unknown_entries() {
+    local known=" .gitignore .DS_Store CLAUDE.md settings.json settings.local.json keybindings.json statusline.py rules agents commands output-styles hooks bin inventory skills plugins backups cache daemon daemon.log daemon-auth-cooldown daemon-auth-status.json .last-cleanup .last-update-result.json dev-mods mods downloads file-history history.jsonl jobs paste-cache plans projects session-env sessions shell-snapshots state tasks telemetry ide todos statsig "
+    local unknown=()
+    local entry
+    for entry in "$CLAUDE_HOME"/* "$CLAUDE_HOME"/.[!.]*; do
+        [[ -e "$entry" ]] || continue
+        entry="$(basename "$entry")"
+        if [[ "$known" != *" $entry "* ]]; then
+            unknown+=("$entry")
+        fi
+    done
+    if (( ${#unknown[@]} > 0 )); then
+        echo
+        echo "Not covered by snapshots (decide whether to allowlist in ~/.claude/.gitignore):"
+        printf '  %s\n' "${unknown[@]}"
+    fi
+}
+
+command_snapshot() {
+    local label="${1:-}"
+    local message="${2:-$label}"
+    local name
+    name="$(slugify "$label")"
+    if [[ -z "$name" ]]; then
+        echo "Usage: claude-config snapshot <name> [message]" >&2
+        exit 1
+    fi
+    if repo rev-parse --verify --quiet "refs/tags/$name" >/dev/null; then
+        echo "Snapshot '$name' already exists." >&2
+        exit 1
+    fi
+
+    write_host_inventory
+    repo add -A
+    if ! repo diff --cached --quiet || ! repo rev-parse --verify --quiet HEAD >/dev/null; then
+        repo commit --quiet -m "$message"
+    fi
+    repo tag -a "$name" -m "$message"
+    echo "Snapshot '$name' recorded."
+    repo show --stat --format='%h %s' HEAD | tail -n +2
+    push_remote
+    report_unknown_entries
+}
+
+command_list() {
+    local format='%(creatordate:format:%Y-%m-%d %H:%M)  %(refname:short)  %(contents:subject)'
+    if [[ "${1:-}" == "--tsv" ]]; then
+        format='%(creatordate:format:%Y-%m-%d %H:%M)%09%(refname:short)%09%(contents:subject)'
+    fi
+    repo tag -l --sort=creatordate --format="$format"
+}
+
+command_status() {
+    repo add -A --dry-run >/dev/null
+    local changes
+    changes="$(repo status --short)"
+    if [[ -z "$changes" ]]; then
+        echo "No config changes since the last commit."
+    else
+        echo "$changes"
+    fi
+    report_unknown_entries
+}
+
+command_diff() {
+    local name
+    name="$(slugify "${1:-}")"
+    require_snapshot "$name"
+    if [[ "${2:-}" == "--full" ]]; then
+        repo diff "$name" -- ':!inventory'
+    else
+        repo diff --stat "$name" -- ':!inventory'
+    fi
+    report_packages_since "$name"
+}
+
+report_packages_since() {
+    local name="$1"
+    local current
+    current="$(mktemp -d)"
+    write_inventory "$current"
+
+    local file
+    local printed_header=false
+    for file in "$current"/*.txt "$current/mcp-servers.json"; do
+        [[ -f "$file" ]] || continue
+        local base
+        base="$(basename "$file")"
+        if [[ "$base" == "mods.txt" ]]; then
+            continue
+        fi
+        local added
+        added="$(diff <(show_snapshot_inventory "$name" "$base") "$file" | grep '^>' | sed 's/^> /  + /' || true)"
+        if [[ -n "$added" ]]; then
+            if [[ "$printed_header" == false ]]; then
+                echo
+                echo "Installed since '$name' (not removed automatically):"
+                printed_header=true
+            fi
+            echo " ${base%.*}:"
+            echo "$added"
+        fi
+    done
+
+    local brewfile
+    brewfile="$(mktemp)"
+    show_snapshot_inventory "$name" Brewfile > "$brewfile"
+    if [[ -s "$brewfile" ]] && command -v brew >/dev/null; then
+        local extra
+        extra="$(brew bundle cleanup --file="$brewfile" 2>/dev/null | grep -v '^Would \|^Run ' || true)"
+        if [[ -n "$extra" ]]; then
+            if [[ "$printed_header" == false ]]; then
+                echo
+                echo "Installed since '$name' (not removed automatically):"
+                printed_header=true
+            fi
+            echo " brew:"
+            echo "$extra" | sed 's/^/  + /'
+            echo "  remove with: claude-config brew-cleanup $name"
+        fi
+    fi
+    rm -f "$brewfile"
+    rm -rf "$current"
+}
+
+command_rollback() {
+    local name
+    name="$(slugify "${1:-}")"
+    require_snapshot "$name"
+
+    write_host_inventory
+    repo add -A
+    if ! repo diff --cached --quiet; then
+        repo commit --quiet -m "State before rollback to $name"
+        echo "Unsaved changes committed as 'State before rollback to $name'."
+    fi
+
+    # The inventory is excluded on purpose: it has to describe what is actually
+    # installed, not what was installed back then.
+    repo restore --source="$name" --staged --worktree -- ':/' ':!inventory'
+    write_host_inventory
+    repo add -A
+    if repo diff --cached --quiet; then
+        echo "Config already matches '$name'."
+    else
+        repo commit --quiet -m "Roll back to $name"
+        echo "Config rolled back to '$name'."
+    fi
+    push_remote
+
+    report_packages_since "$name"
+    echo
+    echo "MCP servers live in ~/.claude.json and are reported above, not rewritten."
+    echo "Restart Claude Code so settings and plugins are loaded again."
+    echo "Run 'claude-config prune' to delete caches of plugins that are no longer installed."
+}
+
+command_brew_cleanup() {
+    local name
+    name="$(slugify "${1:-}")"
+    require_snapshot "$name"
+    local brewfile
+    brewfile="$(mktemp)"
+    show_snapshot_inventory "$name" Brewfile > "$brewfile"
+    brew bundle cleanup --file="$brewfile" || true
+    if [[ -t 0 ]]; then
+        read -r -p "Uninstall these? [y/N] " answer
+        if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
+            brew bundle cleanup --force --file="$brewfile"
+        fi
+    fi
+    rm -f "$brewfile"
+}
+
+command_prune() {
+    local stale=()
+    local directory
+
+    local referenced
+    referenced="$(jq -r '.plugins[][]?.installPath' "$CLAUDE_HOME/plugins/installed_plugins.json" 2>/dev/null || true)"
+    for directory in "$CLAUDE_HOME"/plugins/cache/*/*/*; do
+        [[ -d "$directory" ]] || continue
+        if ! grep -qxF "$directory" <<<"$referenced"; then
+            stale+=("$directory")
+        fi
+    done
+
+    local marketplaces
+    marketplaces="$(jq -r 'keys[]' "$CLAUDE_HOME/plugins/known_marketplaces.json" 2>/dev/null || true)"
+    for directory in "$CLAUDE_HOME"/plugins/marketplaces/*; do
+        [[ -d "$directory" ]] || continue
+        if ! grep -qxF "$(basename "$directory")" <<<"$marketplaces"; then
+            stale+=("$directory")
+        fi
+    done
+
+    if (( ${#stale[@]} == 0 )); then
+        echo "No stale plugin caches."
+        return
+    fi
+
+    echo "Stale plugin caches:"
+    printf '  %s\n' "${stale[@]}"
+    if [[ ! -t 0 ]]; then
+        echo "Run 'claude-config prune' in a terminal to delete them."
+        return
+    fi
+    read -r -p "Delete them? [y/N] " answer
+    if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
+        rm -rf "${stale[@]}"
+        find "$CLAUDE_HOME/plugins/cache" -mindepth 1 -type d -empty -delete
+        echo "Deleted."
+    fi
+}
+
+write_allowlist() {
+    cat > "$CLAUDE_HOME/.gitignore" <<'ALLOWLIST'
+# Allowlist: everything is ignored unless listed here, so files a new tool
+# drops into ~/.claude never end up in a snapshot unnoticed.
+/*
+
+!/.gitignore
+!/CLAUDE.md
+!/settings.json
+!/settings.local.json
+!/keybindings.json
+!/statusline.py
+!/rules/
+!/agents/
+!/commands/
+!/output-styles/
+!/hooks/
+!/bin/
+!/inventory/
+!/mods/
+
+!/skills/
+# Synced from the claude.ai account, not managed locally.
+/skills/synced/
+
+!/plugins/
+/plugins/*
+!/plugins/installed_plugins.json
+!/plugins/known_marketplaces.json
+
+# Written by the engine on every load of a mod.
+/mods/*/.claude-plugin/types/
+/mods/*/tsconfig.json
+
+.DS_Store
+ALLOWLIST
+}
+
+command_init() {
+    local remote="${1:-}"
+    if [[ -e "$GIT_DIR_PATH" ]]; then
+        echo "$GIT_DIR_PATH already exists; nothing to initialise." >&2
+        exit 1
+    fi
+    if [[ ! -d "$CLAUDE_HOME" ]]; then
+        echo "No Claude Code configuration at $CLAUDE_HOME." >&2
+        exit 1
+    fi
+    if [[ -f "$CLAUDE_HOME/.gitignore" ]]; then
+        echo "Keeping the existing $CLAUDE_HOME/.gitignore as the allowlist."
+    else
+        write_allowlist
+        echo "Wrote the allowlist to $CLAUDE_HOME/.gitignore."
+    fi
+    git init --bare --quiet "$GIT_DIR_PATH"
+    if [[ -n "$remote" ]]; then
+        repo remote add origin "$remote"
+    fi
+    command_snapshot baseline "Baseline after claude-config init"
+}
+
+main() {
+    local command="${1:-}"
+    shift || true
+    case "$command" in
+        init) command_init "$@" ;;
+        snapshot) require_repo; command_snapshot "$@" ;;
+        list) require_repo; command_list "$@" ;;
+        status) require_repo; command_status ;;
+        diff) require_repo; command_diff "$@" ;;
+        rollback) require_repo; command_rollback "$@" ;;
+        brew-cleanup) require_repo; command_brew_cleanup "$@" ;;
+        prune) command_prune ;;
+        *) usage ;;
+    esac
+}
+
+main "$@"

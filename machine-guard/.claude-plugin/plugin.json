@@ -1,0 +1,6 @@
+{
+  "name": "machine-guard",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Puts every command that changes the machine in front of the user before it runs"
+}
