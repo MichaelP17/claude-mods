@@ -1,0 +1,22 @@
+{
+  "name": "compact-shaper",
+  "version": "0.2.0",
+  "author": {
+    "name": "Michael Prömpler"
+  },
+  "description": "Summarizes compactions as a handoff, and cuts re-readable tool output instead on /compact prune",
+  "userConfig": {
+    "preserveRecentMessages": {
+      "type": "number",
+      "title": "Protected recent messages",
+      "description": "The newest messages, and the first one, are never pruned.",
+      "default": 6
+    },
+    "keepHeadChars": {
+      "type": "number",
+      "title": "Head kept when pruning (chars)",
+      "description": "How much of a pruned tool output stays in the transcript.",
+      "default": 300
+    }
+  }
+}

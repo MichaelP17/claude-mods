@@ -9,7 +9,7 @@ Mods for [Claude Code](https://code.claude.com): small plugins of function hooks
 | [`concurrency-guard`](concurrency-guard/README.md) | Caps how many subagents and monitors run at the same time; more need a stated reason and your approval |
 | [`service-radar`](service-radar/README.md) | Tracks services Claude starts detached — Docker Compose stacks, containers, Colima, Homebrew services — and stops them on request or at `/clear` |
 | [`cache-watch`](cache-watch/README.md) | Shows how long the prompt cache stays warm and suggests compacting a large context before it goes cold or after a milestone |
-| [`jev-compact`](jev-compact/README.md) | Compacts by cutting re-readable tool output instead of summarizing; local rules plus TypeSafe's Jev model decide what stays |
+| [`compact-shaper`](compact-shaper/README.md) | Summarizes compactions as a handoff; `/compact prune` cuts re-readable tool output instead and keeps every message word for word |
 | [`status-band`](status-band/README.md) | Shows context fill and the five-hour and weekly usage limits in the footer under the prompt in the desktop app |
 
 Each mod is independent. Install only the ones you want.
@@ -41,18 +41,18 @@ Claude Code loads mods from the folders listed in the environment variable `CLAU
 3. **Add the mod folders to `CLAUDE_CODE_PLUGIN_DIRS`.** Use absolute paths, separated by `:` (on Windows `;`). Keep every entry that is already there. This command appends all seven mods and creates the `env` block if it is missing; remove the ones you do not want from `MODS`:
 
    ```sh
-   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard:$HOME/claude-mods/service-radar:$HOME/claude-mods/cache-watch:$HOME/claude-mods/jev-compact:$HOME/claude-mods/status-band"
+   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard:$HOME/claude-mods/service-radar:$HOME/claude-mods/cache-watch:$HOME/claude-mods/compact-shaper:$HOME/claude-mods/status-band"
    jq --arg mods "$MODS" '.env.CLAUDE_CODE_PLUGIN_DIRS = (if (.env.CLAUDE_CODE_PLUGIN_DIRS // "") == "" then $mods else .env.CLAUDE_CODE_PLUGIN_DIRS + ":" + $mods end)' \
      ~/.claude/settings.json > /tmp/settings.json && mv /tmp/settings.json ~/.claude/settings.json
    ```
 
    If `~/.claude/settings.json` does not exist yet, create it with `{}` first.
 
-4. **Run the mod-specific setup** described in each mod's README. `config-snapshots` needs `claude-config init`; `jev-compact` needs an OpenRouter or TypeSafe API key in the environment for Jev and runs on local rules alone without one.
+4. **Run the mod-specific setup** described in each mod's README. `config-snapshots` needs `claude-config init`.
 
 5. **Restart Claude Code.** Mods are loaded at startup. The desktop app reads the same `env` block, so the mods load there too once it is restarted.
 
-6. **Check that they loaded:** typing `/` lists `/snapshot`, `/snapshots` and `/rollback` when `config-snapshots` is active, and `/jev-preview` when `jev-compact` is; the other mods show themselves when they act, as described in their READMEs. A mod that fails to load is named in a dim line in the transcript; `claude --debug` shows the reason.
+6. **Check that they loaded:** typing `/` lists `/snapshot`, `/snapshots` and `/rollback` when `config-snapshots` is active, and `/prune-preview` when `compact-shaper` is; the other mods show themselves when they act, as described in their READMEs. A mod that fails to load is named in a dim line in the transcript; `claude --debug` shows the reason.
 
 ## Installing with Claude Code
 
@@ -61,7 +61,6 @@ You can give Claude Code the URL of this repository and ask it to install the mo
 - Ask the user which mods to install and where to clone the repository if they have not said so; default to `~/claude-mods`.
 - Follow the steps under [Installation](#installation) in order. Back up `settings.json` before changing it, merge into an existing `CLAUDE_CODE_PLUGIN_DIRS` instead of replacing it, and never remove other keys from `settings.json`.
 - For `config-snapshots`, follow its README: skip `claude-config init` if `~/.claude-config.git` already exists, and ask the user for a remote URL instead of inventing one.
-- For `jev-compact`, tell the user that asking Jev sends conversation excerpts to OpenRouter or TypeSafe, and let them put the API key into their environment themselves as its README describes; never write a key into `settings.json` or a shell profile.
 - Do not install anything with a package manager. If `git`, `jq` or `bash` is missing, tell the user the command to install it and wait.
 - Finish by telling the user to restart Claude Code, then how to check each installed mod.
 

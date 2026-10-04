@@ -11,8 +11,31 @@ export type Call = {
   isPinned: boolean
 }
 
+export type Reason = 'pinned' | 'protected' | 'superseded' | 'short' | 'cut'
+
+export type Decision = {
+  id: string
+  tool: string
+  input: string
+  resultChars: number
+  reason: Reason
+}
+
+export type Outcome = {
+  messages: SessionMessage[]
+  tokensBefore: number
+  tokensAfter: number
+  decisions: Decision[]
+}
+
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 const WRITE_FIELDS = new Set(['content', 'new_string', 'old_string', 'new_source', 'edits'])
+
+// Getting these back costs more than a re-read: a subagent has to run again.
+const AGENT_TOOLS = new Set(['Agent', 'Task'])
+
+// Snapshots of state that has moved on since, and CI logs that expire.
+const UNREPEATABLE_COMMAND = /\b(git (status|stash list)|gh run view|gh pr checks)\b/
 
 export function isPinned(index: number, total: number, preserveRecentMessages: number): boolean {
   return index === 0 || index >= total - preserveRecentMessages
@@ -87,7 +110,7 @@ function shortened(text: string, headChars: number, note: string): string {
     return text
   }
 
-  return `${text.slice(0, headChars)}\n[jev-compact removed ${text.length - headChars} chars; ${note}]`
+  return `${text.slice(0, headChars)}\n[pruned ${text.length - headChars} chars; ${note}]`
 }
 
 export function truncateResult(text: string, headChars: number, tool: string): string {
@@ -211,4 +234,60 @@ export function charsOf(messages: readonly SessionMessage[]): number {
   }
 
   return total
+}
+
+// Output that cannot simply be produced again stays: errors are usually what
+// the work is about, and the rest is listed above.
+export function isProtected(call: Call): boolean {
+  if (call.isError || AGENT_TOOLS.has(call.tool)) {
+    return true
+  }
+
+  return call.tool === 'Bash' && typeof call.input.command === 'string' && UNREPEATABLE_COMMAND.test(call.input.command)
+}
+
+/**
+ * Cuts every tool output that can be read again: outside the first and the
+ * newest messages, not protected, and long enough for a cut to matter. Read
+ * results a later write or full read replaced count as superseded. Text
+ * messages are never touched.
+ */
+export function pruneTranscript(
+  messages: readonly SessionMessage[],
+  tokensBefore: number,
+  preserveRecentMessages: number,
+  keepHeadChars: number,
+): Outcome {
+  const calls = collectCalls(messages, preserveRecentMessages)
+  const superseded = supersededReads(calls)
+  const reasonOf = (call: Call): Reason => {
+    if (call.isPinned) {
+      return 'pinned'
+    }
+    if (superseded.has(call.id)) {
+      return 'superseded'
+    }
+    if (isProtected(call)) {
+      return 'protected'
+    }
+
+    return call.resultText.length > keepHeadChars + 200 ? 'cut' : 'short'
+  }
+  const decisions = calls.map(call => ({
+    id: call.id,
+    tool: call.tool,
+    input: JSON.stringify(call.input).slice(0, 160),
+    resultChars: call.resultText.length,
+    reason: reasonOf(call),
+  }))
+  const dropped = new Set(decisions.filter(i => i.reason === 'cut' || i.reason === 'superseded').map(i => i.id))
+  const pruned = applyDrops(messages, calls, dropped, keepHeadChars)
+  const charsBefore = Math.max(1, charsOf(messages))
+
+  return {
+    messages: pruned,
+    tokensBefore,
+    tokensAfter: Math.round((tokensBefore * charsOf(pruned)) / charsBefore),
+    decisions,
+  }
 }

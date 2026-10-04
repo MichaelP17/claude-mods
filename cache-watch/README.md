@@ -48,9 +48,9 @@ The server reports with every response how much of the prompt came from the cach
 
 Change them in `/config`, or in `~/.claude/settings.json` under `pluginConfigs["cache-watch"].options`.
 
-## Works with jev-compact
+## Works with compact-shaper
 
-**Compact** runs a normal compaction. With [`jev-compact`](../jev-compact/README.md) loaded, that compaction cuts re-readable tool output instead of summarizing.
+**Compact** runs a normal compaction. With [`compact-shaper`](../compact-shaper/README.md) loaded, its summary follows the structure of a handoff.
 
 ## Uninstall
 
