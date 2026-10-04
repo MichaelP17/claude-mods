@@ -71,7 +71,11 @@ write_inventory() {
     rm -f "$target"/*
 
     if [[ -f "$HOME/.claude.json" ]]; then
-        jq --sort-keys '.mcpServers // {}' "$HOME/.claude.json" > "$target/mcp-servers.json"
+        # Header and env values carry tokens; the snapshot is pushed, so only their names are kept.
+        jq --sort-keys '.mcpServers // {} | map_values(
+            (if .headers then .headers |= map_values("<redacted>") else . end)
+            | (if .env then .env |= map_values("<redacted>") else . end))' \
+            "$HOME/.claude.json" > "$target/mcp-servers.json"
     fi
     if command -v brew >/dev/null; then
         brew bundle dump --file="$target/Brewfile" --force >/dev/null
