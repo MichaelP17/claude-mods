@@ -172,7 +172,7 @@ push_remote() {
 # Unknown top-level entries are what a new tool drops into ~/.claude; they are
 # neither tracked nor ignored on purpose, so they get surfaced for a decision.
 report_unknown_entries() {
-    local known=" .gitignore .DS_Store CLAUDE.md settings.json settings.local.json keybindings.json statusline.py rules agents commands output-styles hooks bin inventory skills plugins backups cache daemon daemon.log daemon.lock daemon.status.json daemon-auth-cooldown daemon-auth-status.json .last-cleanup .last-update-result.json debug dev-mods mods downloads file-history history.jsonl jobs paste-cache plans projects session-env sessions shell-snapshots state tasks telemetry ide todos statsig "
+    local known=" .gitignore .DS_Store CLAUDE.md settings.json settings.local.json keybindings.json statusline.py rules agents commands output-styles hooks bin inventory skills plugins backups cache daemon daemon.log daemon.lock daemon.status.json daemon-auth-cooldown daemon-auth-status.json .last-cleanup .last-update-result.json debug dev-mods mods downloads file-history history.jsonl jobs paste-cache plans projects session-env sessions shell-snapshots state tasks telemetry ide todos statsig jev-compact "
     local unknown=()
     local entry
     for entry in "$CLAUDE_HOME"/* "$CLAUDE_HOME"/.[!.]*; do
