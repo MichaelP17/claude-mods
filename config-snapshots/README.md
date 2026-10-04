@@ -64,6 +64,7 @@ A rollback never rewrites history: it commits the current state first, then comm
 
 - MCP servers added with `claude mcp add --scope user` live in `~/.claude.json`, which also holds login data and runtime state. Only its `mcpServers` section is recorded, and a rollback reports differences there instead of rewriting the file.
 - `plugins/installed_plugins.json` contains absolute paths, so plugins are best installed per machine rather than shared across operating systems.
+- `lastUpdated` in `plugins/known_marketplaces.json` is not recorded, because Claude Code rewrites it on every background marketplace refresh. A rollback restores that file without the field.
 - Homebrew's auto-update is disabled while the script reads the inventory; otherwise taking a snapshot could migrate formulae.
 
 ## Uninstall

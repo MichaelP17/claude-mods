@@ -50,6 +50,22 @@ require_repo() {
         echo "No snapshot repository at $GIT_DIR_PATH. Run 'claude-config init' first." >&2
         exit 1
     fi
+    configure_filters
+}
+
+# Claude Code rewrites lastUpdated in known_marketplaces.json on every
+# background marketplace refresh, which would flag the config as changed right
+# after each snapshot. The clean filter drops the field before git compares the
+# file. It lives in the repository's own config and info/attributes, so nothing
+# extra has to be allowlisted in ~/.claude.
+configure_filters() {
+    repo config filter.marketplaces.clean "jq 'map_values(del(.lastUpdated))'"
+    local attributes="$GIT_DIR_PATH/info/attributes"
+    local rule='/plugins/known_marketplaces.json filter=marketplaces'
+    mkdir -p "$(dirname "$attributes")"
+    if ! grep -qxF "$rule" "$attributes" 2>/dev/null; then
+        echo "$rule" >> "$attributes"
+    fi
 }
 
 # Tags cannot contain spaces, so "Initial proper mac snapshot" is stored as
@@ -445,6 +461,7 @@ command_init() {
         echo "Wrote the allowlist to $CLAUDE_HOME/.gitignore."
     fi
     git init --bare --quiet "$GIT_DIR_PATH"
+    configure_filters
     if [[ -n "$remote" ]]; then
         repo remote add origin "$remote"
     fi
