@@ -10,6 +10,7 @@ export type Settings = {
   aggressiveThreshold: number
   preserveRecentMessages: number
   targetTokens: number
+  sufficientReduction: number
   previewChars: number
   keepHeadChars: number
 }
@@ -31,6 +32,7 @@ export type Outcome = {
   tokensBefore: number
   tokensAfter: number
   isOnTarget: boolean
+  isSufficient: boolean
   decisions: Decision[]
   jevRequests: number
   jevTokens: number
@@ -150,13 +152,16 @@ export async function pruneTranscript(
   }
 
   const tokensAfter = tokensOf(pruned)
+  const isOnTarget = tokensAfter <= settings.targetTokens
+  const reduction = tokensBefore === 0 ? 0 : 1 - tokensAfter / tokensBefore
 
   return {
     messages: pruned,
     stage,
     tokensBefore,
     tokensAfter,
-    isOnTarget: tokensAfter <= settings.targetTokens,
+    isOnTarget,
+    isSufficient: isOnTarget || reduction >= settings.sufficientReduction,
     decisions: decisionsOf(calls, superseded, candidateIds, probabilities, dropped),
     jevRequests,
     jevTokens,

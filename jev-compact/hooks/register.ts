@@ -21,6 +21,7 @@ let settings: Settings = {
   aggressiveThreshold: 0.75,
   preserveRecentMessages: 6,
   targetTokens: 150_000,
+  sufficientReduction: 0.4,
   previewChars: 300,
   keepHeadChars: 300,
 }
@@ -108,13 +109,24 @@ async function writeReport($: EngineInterface, kind: string, outcome: Outcome): 
   return path
 }
 
+function verdictOf(outcome: Outcome): string {
+  if (outcome.isOnTarget) {
+    return 'reached'
+  }
+  if (outcome.isSufficient) {
+    return `missed, but the cut saves at least ${Math.round(settings.sufficientReduction * 100)}% and would replace the native summary`
+  }
+
+  return 'missed, the native summary would run over the cut transcript'
+}
+
 function previewText(outcome: Outcome, reportPath: string | null): string {
   const largestCuts = outcome.decisions
     .filter(i => i.reason === 'cut' || i.reason === 'superseded')
     .sort((a, b) => b.resultChars - a.resultChars)
     .slice(0, 8)
     .map(i => `- ${i.tool} ${i.input.slice(0, 80)} (${i.resultChars} chars, ${i.reason}${i.probability === null ? '' : `, keep ${i.probability.toFixed(2)}`})`)
-  const lines = [`jev-compact preview: ${summaryOf(outcome)}`, `Target ${formatTokens(settings.targetTokens)}: ${outcome.isOnTarget ? 'reached' : 'missed, the native summary would run over the cut transcript'}`]
+  const lines = [`jev-compact preview: ${summaryOf(outcome)}`, `Target ${formatTokens(settings.targetTokens)}: ${verdictOf(outcome)}`]
   if (outcome.jevError !== null) {
     lines.push(`Jev failed: ${outcome.jevError}`)
   }
@@ -136,6 +148,7 @@ export const register: Register = (on, options) => {
     aggressiveThreshold: Number(options.aggressiveThreshold ?? 0.75),
     preserveRecentMessages: Number(options.preserveRecentMessages ?? 6),
     targetTokens: Number(options.targetTokens ?? 150_000),
+    sufficientReduction: Number(options.sufficientReduction ?? 0.4),
     previewChars: Number(options.previewChars ?? 300),
     keepHeadChars: Number(options.keepHeadChars ?? 300),
   }
@@ -183,7 +196,7 @@ export const register: Register = (on, options) => {
     }
 
     const reduction = outcome.tokensBefore === 0 ? 0 : 1 - outcome.tokensAfter / outcome.tokensBefore
-    if (outcome.isOnTarget && reduction >= MIN_REDUCTION) {
+    if (outcome.isSufficient && reduction >= MIN_REDUCTION) {
       $.ui.toast(`jev-compact: ${summaryOf(outcome)}`, { timeoutMs: 15_000 })
 
       return { messages: outcome.messages, tokensBefore: outcome.tokensBefore, tokensAfter: outcome.tokensAfter }

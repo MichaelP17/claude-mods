@@ -13,7 +13,7 @@ Each stage only runs while the transcript is still above `targetTokens`:
 | Rules | Read results of files that were edited or read in full again later; the bulk of Edit and Write inputs, since the file on disk holds the current content | none, local |
 | Jev | Tool outputs Jev gives a keep probability below `keepThreshold` | fractions of a cent |
 | Jev, aggressive | The same at `aggressiveThreshold` | no further request |
-| Native summary | Claude Code's own compaction, run over the already cut transcript | far fewer tokens than over the original |
+| Native summary | Claude Code's own compaction, run over the already cut transcript; skipped when the cut saved at least `sufficientReduction` | far fewer tokens than over the original |
 
 A cut output keeps its first `keepHeadChars` characters and a note telling Claude how to get the content back. The first message and the newest `preserveRecentMessages` are never touched.
 
@@ -47,6 +47,7 @@ The local rules still run there. Without an API key, only the local rules run ev
 | `mode` | `shadow` | `shadow` reports only, `active` replaces the native compaction |
 | `provider` | `openrouter` | Where Jev is called: `openrouter` or `typesafe` |
 | `targetTokens` | 150000 | Size the stages aim for |
+| `sufficientReduction` | 0.4 | Share a cut has to save to replace the native summary even when it misses `targetTokens` |
 | `keepThreshold` | 0.5 | Keep probability from which an output stays |
 | `aggressiveThreshold` | 0.75 | Threshold used when the normal one misses the target |
 | `preserveRecentMessages` | 6 | Newest messages that are never cut |
@@ -74,7 +75,7 @@ When the variable is not set — the desktop app starts sessions without the she
 ## Details and limits
 
 - Only the main conversation is compacted this way; subagents keep the native compaction.
-- An active compaction that saves less than 10% falls back to the native summary over the cut transcript.
+- An active compaction replaces the native summary when it reaches `targetTokens` or saves at least `sufficientReduction`, and always only when it saves at least 10%; otherwise the native summary runs over the cut transcript.
 - Sizes after cutting are estimates, scaled from the character count against the token count Claude Code reports.
 - Claude Code's own automatic compaction triggers this mod as well; it decides when, this mod decides how.
 

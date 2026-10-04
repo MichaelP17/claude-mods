@@ -12,6 +12,7 @@ const SETTINGS: Settings = {
   aggressiveThreshold: 0.75,
   preserveRecentMessages: 2,
   targetTokens: 1000,
+  sufficientReduction: 0.4,
   previewChars: 300,
   keepHeadChars: 300,
 }
@@ -105,6 +106,16 @@ test('Jev decides the rest; the aggressive threshold runs only when the target i
   const relaxed = await pruneTranscript(transcript(), 8000, { ...SETTINGS, targetTokens: 5000 }, ask)
   expect(relaxed.stage).toBe('jev')
   expect(relaxed.decisions.find(i => i.id === 't4')?.reason).toBe('kept')
+})
+
+test('a cut that misses the target is still sufficient when it saves enough', async () => {
+  const { ask } = fixedAsker({ t2: 0.2, t4: 0.6 })
+  const outcome = await pruneTranscript(transcript(), 8000, { ...SETTINGS, targetTokens: 100 }, ask)
+  expect(outcome.isOnTarget).toBe(false)
+  expect(outcome.isSufficient).toBe(true)
+
+  const strict = await pruneTranscript(transcript(), 8000, { ...SETTINGS, targetTokens: 100, sufficientReduction: 0.99 }, ask)
+  expect(strict.isSufficient).toBe(false)
 })
 
 test('a failing Jev leaves the rules standing and reports the error', async () => {

@@ -29,8 +29,14 @@
     "targetTokens": {
       "type": "number",
       "title": "Target context (tokens)",
-      "description": "Each stage only runs while the cut transcript is still above this size; missing it falls back to the native summary over the cut transcript.",
+      "description": "Each stage only runs while the cut transcript is still above this size. The cut replaces the native summary when it reaches this size or saves the sufficient reduction; otherwise the native summary runs over the cut transcript.",
       "default": 150000
+    },
+    "sufficientReduction": {
+      "type": "number",
+      "title": "Sufficient reduction",
+      "description": "Share of the context a cut has to save to replace the native summary even when it misses the target, e.g. 0.4 for 40%.",
+      "default": 0.4
     },
     "keepThreshold": {
       "type": "number",
