@@ -31,7 +31,7 @@ No setup needed.
 | `colima delete`, `podman machine init` and `rm`, `launchctl enable` | |
 | `defaults write`, writing `git config --global`, `xcode-select --install`, `softwareupdate`, `winget`, `choco`, `scoop` | |
 
-Chained commands are checked part by part: in `cd app && brew install jq` the second part is caught.
+Chained commands are checked part by part: in `cd app && brew install jq` the second part is caught. Text inside quotes is data, so searching for install commands — `grep 'brew install\|cargo install' log` — is let through.
 
 Starting a service changes nothing permanent and is left to [`service-radar`](../service-radar/README.md), which keeps track of what Claude started and offers to stop it. Use an `ask` rule (below) where starting something should still be confirmed.
 

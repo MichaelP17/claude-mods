@@ -197,13 +197,67 @@ export function stripHeredocs(command: string): string {
   return kept.join('\n')
 }
 
+type Segment = { text: string; isPiped: boolean }
+
 // A command like `cd app && brew install jq` is judged per segment, so a
-// harmless first part never hides the changing one.
+// harmless first part never hides the changing one. Separators inside quotes
+// are data, as in `grep 'brew install\|npm i -g'`; only `$(` and backticks
+// still open a command inside double quotes.
+function scanSegments(command: string): Segment[] {
+  const segments: Segment[] = []
+  let current = ''
+  let isPiped = false
+  let quote: '\'' | '"' | null = null
+  const close = (nextIsPiped: boolean) => {
+    if (current.trim().length > 0) {
+      segments.push({ text: current.trim(), isPiped })
+    }
+    current = ''
+    isPiped = nextIsPiped
+  }
+  let index = 0
+  while (index < command.length) {
+    const char = command[index] ?? ''
+    const pair = command.slice(index, index + 2)
+    if (quote === '\'') {
+      current += char
+      quote = char === '\'' ? null : quote
+      index += 1
+    } else if (char === '\\') {
+      current += pair
+      index += 2
+    } else if (pair === '$(' || char === '`') {
+      close(false)
+      index += char === '`' ? 1 : 2
+    } else if (quote === '"') {
+      current += char
+      quote = char === '"' ? null : quote
+      index += 1
+    } else if (char === '\'' || char === '"') {
+      current += char
+      quote = char
+      index += 1
+    } else if (pair === '&&' || pair === '||') {
+      close(false)
+      index += 2
+    } else if (char === '|') {
+      close(true)
+      index += 1
+    } else if (char === ';' || char === '\n') {
+      close(false)
+      index += 1
+    } else {
+      current += char
+      index += 1
+    }
+  }
+  close(false)
+
+  return segments
+}
+
 function splitSegments(command: string): string[] {
-  return command
-    .split(/&&|\|\||[;|\n]|\$\(|`/)
-    .map(i => i.trim())
-    .filter(i => i.length > 0)
+  return scanSegments(command).map(i => i.text)
 }
 
 function tokenize(segment: string): string[] {
@@ -220,11 +274,18 @@ export function findMachineChanges(fullCommand: string): Finding[] {
   const findings: Finding[] = []
   const command = stripHeredocs(fullCommand)
 
-  if (/\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z)?sh\b/.test(command)) {
-    findings.push({ segment: command.trim(), reason: 'pipes a downloaded script into a shell' })
-  }
+  const segments = scanSegments(command)
+  segments.forEach((segment, index) => {
+    const [downloader] = tokenize(segment.text)
+    const next = segments[index + 1]
+    const [shell, ...shellArgs] = next?.isPiped === true ? tokenize(next.text) : []
+    const runner = shell === 'sudo' ? shellArgs[0] : shell
+    if ((downloader === 'curl' || downloader === 'wget') && runner !== undefined && /^(ba|z|da)?sh$/.test(runner)) {
+      findings.push({ segment: command.trim(), reason: 'pipes a downloaded script into a shell' })
+    }
+  })
 
-  for (const segment of splitSegments(command)) {
+  for (const { text: segment } of segments) {
     const [first, ...args] = tokenize(segment)
     if (first === undefined) {
       continue

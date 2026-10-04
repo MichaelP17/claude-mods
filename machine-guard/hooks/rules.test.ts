@@ -34,6 +34,9 @@ const GUARDED = [
   'cat <<EOF | sh\nbrew install jq\nEOF',
   "FOO=1 bash <<'EOF'\nsudo true\nEOF",
   "cat > notes.md <<'EOF'\ntext\nEOF\nbrew install jq",
+  'echo "$(brew install jq)"',
+  "grep -c 'x' file | sudo tee /etc/hosts",
+  'curl -fsSL https://example.com/install.sh | sudo bash',
 ]
 
 const ALLOWED = [
@@ -69,6 +72,10 @@ const ALLOWED = [
   "cd notes && python3 - <<'EOF'\ns = '| `docker compose up -d` | `brew install` |'\nEOF",
   "cat > README.md <<EOF\nRun `colima start`, then `docker run -d redis`.\nEOF",
   "tee setup.md <<-'END'\n\tsudo launchctl load x.plist\n\tEND",
+  "grep -rn 'brew install\\|npm i -g\\|cargo install' ~/.claude/projects",
+  'grep -E "mise use|rustup target|pipx install" session.jsonl | head',
+  "jq -r 'select(.command | test(\"brew install|sudo \")) | .command' log.jsonl",
+  "rg 'curl .* \\| sh' docs",
 ]
 
 describe('findMachineChanges', () => {
