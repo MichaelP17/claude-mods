@@ -3,10 +3,12 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { CacheReading } from '../types'
 import {
+  HANDOFF_FILE,
   HANDOFF_PROMPT,
   contextTokensOf,
   formatRemaining,
   formatTokens,
+  handoffContextOf,
   isCold,
   isMilestoneCommand,
   learnTtl,
@@ -81,6 +83,23 @@ async function compactNow($: EngineInterface): Promise<void> {
   }
 }
 
+// The handoff sits at the repository root, so a session started in a
+// subfolder still finds it.
+async function handoffPathOf($: EngineInterface): Promise<string | null> {
+  let directory = await $.session.cwd()
+  while (true) {
+    const candidate = `${directory}/${HANDOFF_FILE}`
+    if (await $.fs.exists(candidate)) {
+      return candidate
+    }
+    const parent = directory.slice(0, directory.lastIndexOf('/'))
+    if ((await $.fs.exists(`${directory}/.git`)) || parent.length === 0 || parent === directory) {
+      return null
+    }
+    directory = parent
+  }
+}
+
 export const register: Register = (on, options) => {
   settings = {
     ttlMs: Number(options.ttlMinutes ?? 60) * 60_000,
@@ -97,6 +116,17 @@ export const register: Register = (on, options) => {
     await refreshStatus($)
 
     return next(e)
+  })
+
+  on('prompt.context', async ($, e, next) => {
+    const result = await next(e)
+    const path = await handoffPathOf($)
+    if (path === null) {
+      return result
+    }
+    $.ui.toast(`Handoff ready: ${path}`, { timeoutMs: 10_000 })
+
+    return { ...result, blocks: [...result.blocks, { name: 'handoff', text: handoffContextOf(path) }] }
   })
 
   // Every model request of the main conversation reads the cache and starts
@@ -235,7 +265,7 @@ export const register: Register = (on, options) => {
             hotkey="h"
             onPress={async () => {
               await update($, suggestion, () => null)
-              await $.prompt.fill({ text: HANDOFF_PROMPT })
+              await $.prompt.submit({ text: HANDOFF_PROMPT })
             }}
           />
           <Text> </Text>

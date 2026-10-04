@@ -27,7 +27,9 @@ From `largeContextTokens` of context on, a band above the prompt offers **Compac
 
 A running turn is never interrupted.
 
-**Write handoff** puts a prompt into the input box that asks Claude to update the project's `HANDOFF.md`; you send it yourself.
+**Write handoff** sends a prompt that asks Claude to write `HANDOFF.md` at the repository root: goal, state, decisions with their reasons, rejected approaches, open points and the exact next step.
+
+When a conversation starts in a repository that has a `HANDOFF.md`, a toast names it and Claude is told where it lies, so asking it to continue is enough for the next session. Only the path is added to the context, not the file's content.
 
 When you send a prompt on a cold cache with a large context, a dialog asks whether to compact first. The rebuild is paid either way; compacting first pays it on the smaller remainder.
 

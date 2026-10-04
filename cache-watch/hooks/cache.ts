@@ -105,5 +105,11 @@ export function isMilestoneCommand(command: string): boolean {
   return COMMIT.test(command) || TESTS.test(command)
 }
 
+export const HANDOFF_FILE = 'HANDOFF.md'
+
 export const HANDOFF_PROMPT =
-  'Update HANDOFF.md for this project so a new session can continue from it alone: decisions and their reasons, approaches that were rejected and why, open points, and the exact next step. Leave out anything that can be re-read from the code.'
+  'Write HANDOFF.md at the repository root so a new session can continue from it alone: date and branch, the goal, the current state, decisions and their reasons, approaches that were rejected and why, open points, the exact next step and which files to read first. Replace what an older handoff says. Leave out anything that can be re-read from the code.'
+
+export function handoffContextOf(path: string): string {
+  return `The previous session left a handoff in ${path}. When the person asks to continue without saying with what, read it first and check that branch and recent commits still match it.`
+}

@@ -2,4 +2,7 @@
 */.claude-plugin/types/
 */tsconfig.json
 
+# Session handoffs are local working state, not part of the mods.
+HANDOFF.md
+
 .DS_Store

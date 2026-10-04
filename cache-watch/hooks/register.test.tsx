@@ -43,3 +43,21 @@ test('the suggestion draws alone when nothing is beneath', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /Prompt cache expires soon/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('a handoff at the repository root is announced to a session started in a subfolder', async ($, on) => {
+  on('session.cwd', () => ({ value: '/repo/src' }))
+  on('fs.exists', (_$, e) => ({ value: e.path === '/repo/HANDOFF.md' || e.path === '/repo/.git' }))
+  on('prompt.context', (_$, e) => ({ blocks: e.blocks }))
+
+  const { blocks } = await $.prompt.context({ blocks: [] })
+  expect(blocks.find(i => i.name === 'handoff')?.text).toContain('/repo/HANDOFF.md')
+})
+
+test('without a handoff the context stays as it is', async ($, on) => {
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('fs.exists', (_$, e) => ({ value: e.path === '/repo/.git' }))
+  on('prompt.context', (_$, e) => ({ blocks: e.blocks }))
+
+  const { blocks } = await $.prompt.context({ blocks: [] })
+  expect(blocks).toEqual([])
+})
