@@ -92,6 +92,15 @@ test('the capture pane saves each submit, multi-line ones included', async ($, o
   }
 })
 
+test('the mobile app, which draws no text field, is pointed to /idea with the text', async ($, on) => {
+  fakeSession(on)
+  await $.session.start({ cwd: '/Users/test/Projects/app', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount({ plugin: 'idea-shell', surface: 'mobile', ...CAPTURE })
+  expect(await ui.find({ type: 'Text', text: /\/idea followed by the idea saves it/ })).toBeDefined()
+  await ui.unmount()
+})
+
 test('/ideas hands an idea to the prompt, and the last removal deletes the file', async ($, on) => {
   const disk = fakeSession(on, { [FILE]: '- first\n- second\n' })
   await $.session.start({ cwd: '/Users/test/Projects/app', surface: 'terminal', isInteractive: true })

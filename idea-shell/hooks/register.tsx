@@ -157,17 +157,19 @@ export const register: Register = on => {
   }).catch(() => ({ deny: 'idea-shell could not update the ideas file.' }))
 
   on('ui.render', { component: 'Pane', requestId: CAPTURE_PANE }, async ($, e) => {
-    const elements = $.ui.resolve(e)
-    const { Box, Text } = elements
+    // Asked by surface, not by `'Input' in` the table: the mobile table carries an
+    // Input that draws nothing.
+    if (e.surface === 'mobile') {
+      const { Text } = $.ui.resolve(e)
+
+      return <Text dimColor>This app draws no text field. /idea followed by the idea saves it.</Text>
+    }
+    const { Box, Input, Text } = $.ui.resolve(e)
     // Reading the list makes every save redraw the pane, which empties the field.
     const count = (await read($, ideas)).length
     // The desktop app's field is a single line, where Shift+Enter saves like Enter.
     const lineBreak = e.surface === 'terminal' ? ' · Shift+Enter adds a line' : ''
     const hint = `${count} ${count === 1 ? 'idea' : 'ideas'} for this folder${lineBreak} · Esc closes`
-    if (!('Input' in elements)) {
-      return <Text dimColor>This app draws no text field. /idea followed by the idea saves it.</Text>
-    }
-    const { Input } = elements
 
     return (
       <Box flexDirection="column">
