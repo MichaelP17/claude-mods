@@ -161,7 +161,9 @@ export const register: Register = on => {
     const { Box, Text } = elements
     // Reading the list makes every save redraw the pane, which empties the field.
     const count = (await read($, ideas)).length
-    const hint = `${count} ${count === 1 ? 'idea' : 'ideas'} for this folder · Shift+Enter adds a line · Esc closes`
+    // The desktop app's field is a single line, where Shift+Enter saves like Enter.
+    const lineBreak = e.surface === 'terminal' ? ' · Shift+Enter adds a line' : ''
+    const hint = `${count} ${count === 1 ? 'idea' : 'ideas'} for this folder${lineBreak} · Esc closes`
     if (!('Input' in elements)) {
       return <Text dimColor>This app draws no text field. /idea followed by the idea saves it.</Text>
     }

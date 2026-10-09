@@ -82,6 +82,12 @@ test('the capture pane saves each submit, multi-line ones included', async ($, o
     await ui.input({ key: 'idea', text: '   ', kind: 'submit' })
     expect(disk.files.get(FILE)).toBe('- Split the importer\n  by source\n')
     expect(await ui.find({ type: 'Text', text: /1 idea for this folder/ })).toBeDefined()
+    const lineBreakHint = await ui.find({ type: 'Text', text: /Shift\+Enter adds a line/ })
+    if (surface === 'terminal') {
+      expect(lineBreakHint).toBeDefined()
+    } else {
+      expect(lineBreakHint).toBeUndefined()
+    }
     await ui.unmount()
   }
 })
