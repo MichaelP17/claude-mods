@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Snapshot } from '../types'
+import { hasConfigChanges } from './status'
 
 const PANE = 'config-snapshots'
 const SCRIPT_TIMEOUT_MS = 180_000
@@ -92,7 +93,7 @@ export const register: Register = on => {
     })
 
     const status = await runScript($, ['status'])
-    if (!status.startsWith('No config changes')) {
+    if (hasConfigChanges(status)) {
       $.ui.toast('Claude config changed since the last snapshot. /snapshot <name> records it.')
     }
 

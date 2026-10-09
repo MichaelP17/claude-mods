@@ -10,7 +10,7 @@ The snapshot repository is a bare git repository at `~/.claude-config.git` whose
 
 | Recorded | Not recorded |
 | --- | --- |
-| `settings.json`, `CLAUDE.md`, `rules/`, `skills/`, `agents/`, `commands/`, `hooks/`, `keybindings.json`, `statusline.py` | transcripts (`projects/`), `history.jsonl`, caches, sessions |
+| `settings.json`, `CLAUDE.md`, `rules/`, `skills/`, `agents/`, `commands/`, `hooks/`, `keybindings.json`, `statusline.py`, `ideas/` | transcripts (`projects/`), `history.jsonl`, caches, sessions |
 | `plugins/installed_plugins.json`, `plugins/known_marketplaces.json` | plugin caches and marketplace clones |
 | `inventory/<machine>/` | |
 
@@ -56,7 +56,7 @@ Inside Claude Code:
 | `/snapshots` | A pane with all snapshots; selecting one shows its diff, a button rolls back after a second confirming press |
 | `/rollback <name>` | Opens the pane on that snapshot |
 
-At session start a toast reports when the config changed since the last snapshot.
+At session start a toast reports when the config changed since the last snapshot. Changes under `ideas/`, which `idea-shell` writes, do not count on their own; they are recorded with the next snapshot.
 
 A rollback never rewrites history: it commits the current state first, then commits the restored one, so a rollback can itself be undone. It never uninstalls packages; it lists them and leaves the decision to you. `snapshot` and `rollback` push to `origin` when a remote is set; `CLAUDE_CONFIG_NO_PUSH=1` skips the push. Restart Claude Code after a rollback.
 
