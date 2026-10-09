@@ -1,0 +1,7 @@
+{
+  "name": "idea-shell",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Captures ideas per folder with /idea while Claude keeps working, and hands them to Claude later",
+  "types": "./types/index.d.ts"
+}
