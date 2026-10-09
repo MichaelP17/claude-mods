@@ -1,0 +1,7 @@
+{
+  "name": "grill-panel",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Answers Claude's numbered question rounds one by one in a panel, keeps confirmed answers across restarts, and sends them back as Q1: … lines",
+  "types": "./types/index.d.ts"
+}
