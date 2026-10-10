@@ -1,0 +1,21 @@
+{
+  "name": "session-relay",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Passes prompts from a planning session to the session that does the work and its answers back, without copy and paste",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "minPromptChars": {
+      "type": "number",
+      "title": "Shortest prompt block (characters)",
+      "description": "A fenced block in the lead's answer is offered for sending from this length on; shorter blocks are usually commands or snippets.",
+      "default": 300
+    },
+    "notify": {
+      "type": "boolean",
+      "title": "Notify when the worker answers",
+      "description": "Raise a notification in the lead session when an answer from the worker arrives, besides the toast.",
+      "default": true
+    }
+  }
+}
