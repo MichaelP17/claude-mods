@@ -1,0 +1,64 @@
+#!/usr/bin/env perl
+# timeout [-s SIGNAL] [-k DURATION] DURATION COMMAND [ARG]...
+# A stand-in for GNU timeout where none is installed (macOS). Exits 124 when the
+# time ran out, like the original; --foreground, --preserve-status and -v are
+# accepted and ignored.
+use strict;
+use warnings;
+use Time::HiRes qw(alarm);
+
+my $signal = 'TERM';
+my $kill_after = 0;
+while (@ARGV && $ARGV[0] =~ /^-/) {
+    my $option = shift @ARGV;
+    last if $option eq '--';
+    if ($option eq '-s' || $option eq '--signal') { $signal = shift @ARGV // 'TERM'; }
+    elsif ($option =~ /^--signal=(.+)$/) { $signal = $1; }
+    elsif ($option =~ /^-s(.+)$/) { $signal = $1; }
+    elsif ($option eq '-k' || $option eq '--kill-after') { $kill_after = shift @ARGV // 0; }
+    elsif ($option =~ /^--kill-after=(.+)$/) { $kill_after = $1; }
+    elsif ($option =~ /^-k(.+)$/) { $kill_after = $1; }
+}
+
+# GNU timeout exits 125 when timeout itself fails.
+sub fail {
+    print STDERR "timeout: $_[0]\n";
+    exit 125;
+}
+
+sub seconds {
+    my ($duration) = @_;
+    $duration =~ /^(\d+(?:\.\d+)?)([smhd]?)$/ or fail("invalid time interval '$duration'");
+    my %unit = ('' => 1, s => 1, m => 60, h => 3600, d => 86400);
+    return $1 * $unit{$2};
+}
+
+fail('missing operand') unless @ARGV >= 2;
+my $limit = seconds(shift @ARGV);
+my $grace = seconds($kill_after);
+$signal =~ s/^SIG//;
+
+my $pid = fork() // fail("fork failed: $!");
+if ($pid == 0) {
+    { no warnings 'exec'; exec { $ARGV[0] } @ARGV; }
+    print STDERR "timeout: failed to run command '$ARGV[0]': $!\n";
+    exit($!{ENOENT} ? 127 : 126);
+}
+
+my $timed_out = 0;
+$SIG{ALRM} = sub {
+    $timed_out = 1;
+    kill $signal, $pid;
+    if ($grace > 0) {
+        $SIG{ALRM} = sub { kill 'KILL', $pid };
+        alarm $grace;
+    }
+};
+$SIG{$_} = sub { kill $_[0], $pid } for qw(INT TERM HUP);
+alarm $limit if $limit > 0;
+
+waitpid $pid, 0;
+my $status = $?;
+alarm 0;
+exit 124 if $timed_out;
+exit($status & 127 ? 128 + ($status & 127) : $status >> 8);

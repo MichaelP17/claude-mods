@@ -1,0 +1,6 @@
+{
+  "name": "shell-shim",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "Fixes the zsh pitfalls Claude's bash-style commands trip over — = words, unmatched globs, word splitting, aliases that hide programs, a missing timeout — before the command runs"
+}
