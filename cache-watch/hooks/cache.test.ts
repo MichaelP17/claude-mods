@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { CacheReading } from '../types'
-import { SHORT_TTL_MS, formatTokens, isCold, isMilestoneCommand, learnTtl, remainingMs, statusText } from './cache'
+import { SHORT_TTL_MS, footerOf, formatTokens, isCold, isMilestoneCommand, learnTtl, remainingMs } from './cache'
 
 const HOUR = 60 * 60 * 1000
 const MINUTE = 60 * 1000
@@ -24,22 +24,22 @@ test('the lifetime counts from the last request and ends cold', () => {
 
 const VISIBILITY = { fromTokens: 100_000, warnMs: 10 * MINUTE }
 
-test('the status line shows remaining time, cold and pending rebuilds', () => {
-  expect(statusText(readingAt(null), 0, VISIBILITY)).toBe(undefined)
-  expect(statusText(readingAt(0), 18 * MINUTE, VISIBILITY)).toBe('cache 42m · ctx 380k')
-  expect(statusText(readingAt(0), 2 * HOUR, VISIBILITY)).toBe('cache cold · ctx 380k')
-  expect(statusText(readingAt(0, { isRebuildPending: true, contextTokens: 140_000 }), MINUTE, VISIBILITY)).toBe(
-    'cache rebuilds · ctx 140k',
-  )
+test('the footer counts the minutes down and turns cold', () => {
+  expect(footerOf(readingAt(null), 0, VISIBILITY)).toBe(null)
+  expect(footerOf(readingAt(0), 18 * MINUTE, VISIBILITY)).toEqual({ label: '⏳ 42m', isExpiring: false })
+  expect(footerOf(readingAt(0), 55 * MINUTE, VISIBILITY)).toEqual({ label: '⏳ 5m', isExpiring: true })
+  expect(footerOf(readingAt(0), HOUR - 30_000, VISIBILITY)).toEqual({ label: '⏳ <1m', isExpiring: true })
+  expect(footerOf(readingAt(0), 2 * HOUR, VISIBILITY)).toEqual({ label: '🧊 cold', isExpiring: false })
+  expect(footerOf(readingAt(0, { isRebuildPending: true }), MINUTE, VISIBILITY)).toBe(null)
   expect(formatTokens(1_200_000)).toBe('1.2M')
   expect(formatTokens(800)).toBe('800')
 })
 
 test('a small context shows only while the cache is about to expire', () => {
   const small = readingAt(0, { contextTokens: 40_000 })
-  expect(statusText(small, 18 * MINUTE, VISIBILITY)).toBe(undefined)
-  expect(statusText(small, 55 * MINUTE, VISIBILITY)).toBe('cache 5m · ctx 40k')
-  expect(statusText(small, 2 * HOUR, VISIBILITY)).toBe(undefined)
+  expect(footerOf(small, 18 * MINUTE, VISIBILITY)).toBe(null)
+  expect(footerOf(small, 55 * MINUTE, VISIBILITY)).toEqual({ label: '⏳ 5m', isExpiring: true })
+  expect(footerOf(small, 2 * HOUR, VISIBILITY)).toBe(null)
 })
 
 test('a miss while the timer still ran teaches the short lifetime', () => {

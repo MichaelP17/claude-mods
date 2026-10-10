@@ -4,15 +4,17 @@ Shows how long the prompt cache stays warm and suggests compacting a large conte
 
 Every model request re-sends the whole conversation. The prompt cache makes that cheap, but it expires a fixed time after the last request — one hour in Claude Code, five minutes under usage overage. A request on an expired cache re-reads the entire context at the cache write price, which on a large context is the most expensive single request of a session. This mod keeps that moment visible and offers to shrink the context before it happens.
 
-## Status line
+## Countdown
 
-| Line | Meaning |
+| Shown | Meaning |
 | --- | --- |
-| `cache 42m · ctx 250k` | Warm for another 42 minutes; the last request carried 250k tokens |
-| `cache cold · ctx 250k` | Expired; the next request rebuilds the cache over the whole context |
-| `cache rebuilds · ctx 90k` | A compaction just ran; the next request writes the cache for the smaller context |
+| `⏳ 42m` | Warm for another 42 minutes |
+| `⏳ 8m`, yellow | Expires within `warnMinutes` |
+| `🧊 cold` | Expired; the next request rebuilds the cache over the whole context |
 
-The line only appears when there is something to decide: from `statusFromTokens` of context on, or while the cache is about to expire. A small context on a cold cache shows nothing.
+The countdown sits in the footer under the prompt: beside the model picker in the desktop app, among the mode labels in the terminal. It shares that footer with [`status-band`](../status-band/README.md) and [`idea-shell`](../idea-shell/README.md).
+
+It only appears when there is something to decide: from `statusFromTokens` of context on, or while the cache is about to expire. A small context on a cold cache shows nothing, and neither does the time right after a compaction, when the next request rebuilds the cache anyway.
 
 The timer starts over with every model request of the main conversation, including the steps Claude takes on its own between tool calls. Subagents have a cache of their own and do not count.
 
@@ -43,7 +45,7 @@ The server reports with every response how much of the prompt came from the cach
 | --- | --- | --- |
 | `ttlMinutes` | 60 | Cache lifetime Claude Code uses |
 | `warnMinutes` | 10 | How early before expiry to suggest compacting |
-| `statusFromTokens` | 300000 | Context size from which the status line shows |
+| `statusFromTokens` | 300000 | Context size from which the countdown shows |
 | `largeContextTokens` | 300000 | Context size from which the mod suggests compacting |
 
 Change them in `/config`, or in `~/.claude/settings.json` under `pluginConfigs["cache-watch"].options`.

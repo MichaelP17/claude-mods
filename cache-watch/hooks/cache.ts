@@ -1,4 +1,4 @@
-import type { CacheReading } from '../types'
+import type { CacheReading, Footer } from '../types'
 
 export const SHORT_TTL_MS = 5 * 60 * 1000
 
@@ -74,26 +74,23 @@ export function formatRemaining(ms: number): string {
 
 export type Visibility = { fromTokens: number; warnMs: number }
 
-// The line only earns its place when there is something to decide: a large
-// context, or a cache about to go cold.
-export function statusText(reading: CacheReading, now: number, visibility: Visibility): string | undefined {
+// The countdown only earns its place when there is something to decide: a
+// large context, or a cache about to go cold. After a compaction the next
+// request rebuilds the cache anyway, so there is nothing to count down.
+export function footerOf(reading: CacheReading, now: number, visibility: Visibility): Footer | null {
   const remaining = remainingMs(reading, now)
-  if (remaining === null) {
-    return undefined
+  if (remaining === null || reading.isRebuildPending) {
+    return null
   }
-  const isExpiring = remaining > 0 && remaining <= visibility.warnMs && !reading.isRebuildPending
+  const isExpiring = remaining > 0 && remaining <= visibility.warnMs
   if (reading.contextTokens < visibility.fromTokens && !isExpiring) {
-    return undefined
-  }
-  const context = `ctx ${formatTokens(reading.contextTokens)}`
-  if (reading.isRebuildPending) {
-    return `cache rebuilds · ${context}`
+    return null
   }
   if (remaining === 0) {
-    return `cache cold · ${context}`
+    return { label: '🧊 cold', isExpiring: false }
   }
 
-  return `cache ${formatRemaining(remaining)} · ${context}`
+  return { label: `⏳ ${formatRemaining(remaining)}`, isExpiring }
 }
 
 const COMMIT = /\bgit\s+(?:-C\s+\S+\s+)?commit\b/

@@ -19,8 +19,8 @@
     },
     "statusFromTokens": {
       "type": "number",
-      "title": "Show status from (tokens)",
-      "description": "The status line appears from this context size on, and below it only while the cache is about to expire.",
+      "title": "Show countdown from (tokens)",
+      "description": "The countdown in the footer appears from this context size on, and below it only while the cache is about to expire.",
       "default": 300000
     },
     "largeContextTokens": {

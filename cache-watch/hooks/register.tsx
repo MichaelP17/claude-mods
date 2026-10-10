@@ -6,6 +6,7 @@ import {
   HANDOFF_FILE,
   HANDOFF_PROMPT,
   contextTokensOf,
+  footerOf,
   formatRemaining,
   formatTokens,
   handoffContextOf,
@@ -13,11 +14,16 @@ import {
   isMilestoneCommand,
   learnTtl,
   remainingMs,
-  statusText,
 } from './cache'
 
 const COMPACT_FIRST = 'Compact first'
 const SEND_AS_IS = 'Send as is'
+const EXPIRING_COLOR = '#d4a017'
+
+const BAND_TEXT = {
+  expiring: { title: '⏳ Cache expires soon', hint: 'compacting now is cheaper than after it expires' },
+  milestone: { title: '🏁 Milestone reached', hint: 'a good moment to compact' },
+}
 
 const INITIAL: CacheReading = { lastRequestAt: null, ttlMs: 60 * 60 * 1000, contextTokens: 0, isRebuildPending: false }
 
@@ -25,16 +31,23 @@ const reading = atom({ plugin: 'cache-watch', key: 'reading' } as const, INITIAL
 const suggestion = atom({ plugin: 'cache-watch', key: 'suggestion' } as const, null)
 const warnedFor = atom({ plugin: 'cache-watch', key: 'warnedFor' } as const, null)
 const isWorking = atom({ plugin: 'cache-watch', key: 'isWorking' } as const, false)
+const footer = atom({ plugin: 'cache-watch', key: 'footer' } as const, null)
 
 // Set from the plugin's options when the module registers.
 let settings = { ttlMs: 60 * 60 * 1000, warnMs: 10 * 60 * 1000, largeContextTokens: 300_000, statusFromTokens: 300_000 }
 let hadMilestone = false
 let ticker: Timer | undefined
 
-async function refreshStatus($: EngineInterface): Promise<void> {
+// Written only on a change, so the ticker does not redraw the footer every
+// fifteen seconds for a minute count that stayed the same.
+async function refreshFooter($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   const visibility = { fromTokens: settings.statusFromTokens, warnMs: settings.warnMs }
-  $.ui.status(statusText(await read($, reading), now, visibility))
+  const next = footerOf(await read($, reading), now, visibility)
+  const current = await read($, footer)
+  if (next?.label !== current?.label || next?.isExpiring !== current?.isExpiring) {
+    await update($, footer, () => next)
+  }
 }
 
 async function checkExpiring($: EngineInterface): Promise<void> {
@@ -61,7 +74,7 @@ async function checkExpiring($: EngineInterface): Promise<void> {
 }
 
 async function tick($: EngineInterface): Promise<void> {
-  await refreshStatus($)
+  await refreshFooter($)
   await checkExpiring($)
 }
 
@@ -72,7 +85,7 @@ async function markCompacted($: EngineInterface, tokensAfter: number | undefined
     isRebuildPending: true,
   }))
   await update($, suggestion, () => null)
-  await refreshStatus($)
+  await refreshFooter($)
 }
 
 async function compactNow($: EngineInterface): Promise<void> {
@@ -113,7 +126,7 @@ export const register: Register = (on, options) => {
     ticker = $.clock.every(15_000, () => {
       void tick($)
     })
-    await refreshStatus($)
+    await refreshFooter($)
 
     return next(e)
   })
@@ -145,7 +158,7 @@ export const register: Register = (on, options) => {
         contextTokens: contextTokensOf(usage),
         isRebuildPending: false,
       }))
-      await refreshStatus($)
+      await refreshFooter($)
     }
 
     return result
@@ -176,7 +189,7 @@ export const register: Register = (on, options) => {
       await update($, suggestion, () => ({ kind: 'milestone', contextTokens: current.contextTokens }))
     }
     hadMilestone = false
-    await refreshStatus($)
+    await refreshFooter($)
 
     return result
   })
@@ -231,10 +244,35 @@ export const register: Register = (on, options) => {
       await update($, reading, current => ({ ...INITIAL, ttlMs: current.ttlMs }))
       await update($, suggestion, () => null)
       await update($, warnedFor, () => null)
-      $.ui.status(undefined)
+      await update($, footer, () => null)
     }
 
     return next(e)
+  })
+
+  // The terminal draws the mode labels itself, so the countdown joins them
+  // there. On the desktop, status-band draws the footer from the labels it was
+  // handed, whichever order the mods load in; only a drawn tree survives that.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    const current = await read($, footer)
+    if (current === null) {
+      return next(e)
+    }
+    if (e.surface === 'terminal') {
+      return next({ ...e, props: { ...e.props, modes: [...e.props.modes, current.label] } })
+    }
+    const below = await next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const rest = below.type !== 'engine' ? below : e.props.modes.length === 0 ? null : <Text dimColor>{e.props.modes.join(' & ')}</Text>
+    const tone = current.isExpiring ? { color: EXPIRING_COLOR } : { dimColor: true }
+
+    return (
+      <Box flexDirection="row">
+        <Text {...tone}>{current.label}</Text>
+        {rest !== null && <Text dimColor> · </Text>}
+        {rest}
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -242,34 +280,33 @@ export const register: Register = (on, options) => {
     if (current === null || e.props.hasSurvey || e.props.isWorking) {
       return next(e)
     }
-    // Another mod's band (status-band) may be drawn beneath; it stays under this
-    // one. An `engine` element means none was, and it cannot be nested.
+    // Another mod's band (session-relay) may be drawn beneath; it stays under
+    // this one. An `engine` element means none was, and it cannot be nested.
     const below = await next(e)
     const beneath = below.type === 'engine' ? null : below
     const { Box, Button, Text } = $.ui.resolve(e)
-    const context = formatTokens(current.contextTokens)
-    const message =
-      current.kind === 'expiring'
-        ? `Prompt cache expires soon · context ${context}. Compacting now keeps the next start cheap.`
-        : `Milestone reached · context ${context}. A good moment to compact.`
+    const text = BAND_TEXT[current.kind]
 
     return (
       <Box flexDirection="column">
-        <Text>{message}</Text>
-        <Box flexDirection="row">
-          <Button key="compact" label="Compact" hotkey="c" variant="primary" onPress={() => compactNow($)} />
-          <Text> </Text>
-          <Button
-            key="handoff"
-            label="Write handoff"
-            hotkey="h"
-            onPress={async () => {
-              await update($, suggestion, () => null)
-              await $.prompt.submit({ text: HANDOFF_PROMPT })
-            }}
-          />
-          <Text> </Text>
-          <Button key="dismiss" label="Dismiss" hotkey="d" role="dismiss" onPress={() => update($, suggestion, () => null)} />
+        <Box flexDirection="row" flexWrap="wrap" alignItems="center" columnGap={3}>
+          <Text>
+            <Text bold>{text.title}</Text>
+            <Text dimColor>{` · ${formatTokens(current.contextTokens)} context · ${text.hint}`}</Text>
+          </Text>
+          <Box flexDirection="row" columnGap={1}>
+            <Button key="compact" label="Compact" hotkey="c" variant="primary" onPress={() => compactNow($)} />
+            <Button
+              key="handoff"
+              label="Write handoff"
+              hotkey="h"
+              onPress={async () => {
+                await update($, suggestion, () => null)
+                await $.prompt.submit({ text: HANDOFF_PROMPT })
+              }}
+            />
+            <Button key="dismiss" label="Dismiss" hotkey="d" role="dismiss" onPress={() => update($, suggestion, () => null)} />
+          </Box>
         </Box>
         {beneath}
       </Box>

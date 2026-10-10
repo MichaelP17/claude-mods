@@ -5,6 +5,8 @@ export type CacheReading = {
   isRebuildPending: boolean
 }
 
+export type Footer = { label: string; isExpiring: boolean }
+
 export type Suggestion = { kind: 'expiring' | 'milestone'; contextTokens: number } | null
 
 declare module 'claude-code' {
@@ -13,6 +15,7 @@ declare module 'claude-code' {
       reading: CacheReading
       suggestion: Suggestion
       warnedFor: number | null
+      footer: Footer | null
       isWorking: boolean
     }
   }
