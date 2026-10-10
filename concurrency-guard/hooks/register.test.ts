@@ -1,8 +1,9 @@
-import { expect, test } from 'claude-code/testing'
+import type { AgentInfo } from 'claude-code'
+import { expect, mock, test } from 'claude-code/testing'
 
 const AGENT_DONE = { result: { status: 'async_launched' } }
 
-function runningAgents(count: number) {
+function runningAgents(count: number): AgentInfo[] {
   return Array.from({ length: count }, (_, i) => ({
     id: `agent-${i}`,
     description: `task ${i}`,
@@ -15,7 +16,6 @@ test('below the limit a subagent starts without asking', async ($, on) => {
   const asked: string[] = []
   const started: string[] = []
   on('agent.list', () => ({ value: runningAgents(3) }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
     asked.push(e.questions[0]?.question ?? '')
 
@@ -37,7 +37,6 @@ test('at the limit a call without reason is refused, a reasoned retry asks the u
   const started: string[] = []
   let answer = 'Allow once'
   on('agent.list', () => ({ value: runningAgents(4) }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
     const question = e.questions[0]?.question ?? ''
     asked.push(question)
@@ -80,7 +79,6 @@ test('monitors count against their own limit', async ($, on) => {
   const asked: string[] = []
   let next = 0
   on('agent.list', () => ({ value: [] }))
-  on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
   on('clock.now', () => ({ value: 1_000 }))
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
@@ -106,7 +104,6 @@ test('monitors count against their own limit', async ($, on) => {
 test('five subagents started in one message respect a limit of four', async ($, on) => {
   const started: string[] = []
   on('agent.list', () => ({ value: runningAgents(started.length) }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', { tool: 'Agent' }, (_$, e) => {
     started.push(e.description)
 
@@ -125,7 +122,6 @@ test('five subagents started in one message respect a limit of four', async ($, 
 test('a monitor call without description is passed on instead of crashing', async ($, on) => {
   let reached = false
   on('agent.list', () => ({ value: [] }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', { tool: 'Monitor' }, () => {
     reached = true
 
@@ -136,4 +132,27 @@ test('a monitor call without description is passed on instead of crashing', asyn
   const result = await $.tool.call(input)
   expect(reached).toBe(true)
   expect(result.isError).toBe(true)
+})
+
+test('running subagents and monitors show in the footer with their limits', async ($, on) => {
+  mock.clock(on)
+  on('agent.list', () => ({ value: runningAgents(2) }))
+  on('tool.call', { tool: 'Agent' }, () => AGENT_DONE)
+  const modes: (readonly string[])[] = []
+  on('ui.render', { component: 'SessionMode' }, (_$, e) => {
+    modes.push(e.props.modes)
+
+    return { type: 'engine', ref: 0 }
+  })
+
+  await $.tool.call({ tool: 'Agent', description: 'third', prompt: 'Do task 3.', subagent_type: 'general-purpose' })
+
+  const terminal = await $.ui.mount({ plugin: 'concurrency-guard', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
+  expect(modes.at(-1)).toEqual(['🤖 2/4'])
+  await terminal.unmount()
+
+  const desktop = await $.ui.mount({ plugin: 'concurrency-guard', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
+  expect(await desktop.find({ type: 'Text', text: '🤖 2/4' })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: /👁/ })).toBeUndefined()
+  await desktop.unmount()
 })

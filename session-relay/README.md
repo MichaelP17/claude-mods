@@ -20,7 +20,9 @@ Each folder remembers its role: every later session started there joins the chan
 | The lead's answer holds a prompt in a fenced block | lead, band above the prompt | **Send**, **Send as fresh session**, **Other block** when there are several, **View**, **Dismiss** |
 | A task arrived | worker, band | **Clear & send** runs `/clear` first, **Send here** goes into the running conversation; the one the lead chose is the primary button. **View**, **Discard** |
 | The worker finished a turn | lead, toast, notification and band | **Attach to next prompt**, **Forward now**, **View**, **Discard** |
-| A session is linked | status line | lead `⇄ clued · working 12m · 1 answer waiting`, worker `⇄ clued · worker · task waiting` |
+| A session is linked | footer under the prompt | lead `⇄ clued ⚙ 12m 📨 1`, worker `⇄ clued worker 📥` |
+
+In the footer, `offline` means no worker session is open, `⚙ 12m` that the worker has been busy for 12 minutes, `📨` answers waiting and `📎` answers attached to the next prompt; on the worker, `📥` is a waiting task and `⏸` that another session in the folder is the worker. The pane spells the same out in words.
 
 **Attach to next prompt** sends the answers along with the next prompt you type in the lead, as context the model reads beside it: you type only your feedback. **Forward now** sends them at once as your message.
 

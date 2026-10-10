@@ -269,8 +269,8 @@ export function openCount(round: Round): number {
   return round.answers.filter(i => i === null).length
 }
 
-export function statusOf(round: Round): string {
-  return `Grill ${round.questions.length - openCount(round)}/${round.questions.length} · /grill`
+export function footerOf(round: Round): string {
+  return `🔥 ${round.questions.length - openCount(round)}/${round.questions.length}`
 }
 
 export function formatAnswers(round: Pick<Round, 'questions' | 'answers'>): string {

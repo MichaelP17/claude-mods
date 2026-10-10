@@ -4,7 +4,7 @@ Answers Claude's question rounds one question at a time. When Claude ends a turn
 
 | When | What you see |
 | --- | --- |
-| Claude's answer ends on a question round | the panel opens on the first open question; `Grill 0/5 · /grill` in the status line |
+| Claude's answer ends on a question round | the panel opens on the first open question; `🔥 0/5` in the footer under the prompt counts the answered questions |
 | Enter in the field | the answer is saved, the next open question comes up |
 | Enter on an empty field | the question's recommendation is taken (`Q2: Recommendation accepted`) |
 | **Edit recommendation** | the recommendation's text goes into the field to change before Enter |
@@ -31,7 +31,7 @@ Each answer confirmed with Enter is saved at once in the mod's store under `~/.c
 
 ## Details and limits
 
-- The panel opens by itself as a side pane when the terminal runs fullscreen and is at least 144 columns wide (110 once you opened it yourself with `/grill`); otherwise the status line points to `/grill`, which opens it at any width. The desktop app always opens it as a side pane.
+- The panel opens by itself as a side pane when the terminal runs fullscreen and is at least 144 columns wide (110 once you opened it yourself with `/grill`); otherwise a toast points to `/grill`, which opens it at any width. The desktop app always opens it as a side pane.
 - It takes the keyboard when it opens only while the prompt box is empty; otherwise click into the field.
 - The desktop app's text field is a single line.
 - Typing an ordinary prompt while a round is open leaves the round alone, so you can ask Claude about a question before answering it. A new round from Claude replaces the old one.

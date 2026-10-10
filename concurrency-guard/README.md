@@ -9,7 +9,7 @@ Caps how many subagents and monitors Claude runs at the same time. Parallel suba
 | At the limit, reason given | A dialog shows the task and Claude's reason: **Allow once**, **No limit this session** or **Deny** |
 | Your prompt names a count | "Use 8 subagents", "starte fünf Subagents", "5 monitors" raises the limit to that count for the session; a toast confirms it |
 
-While anything runs, the status line shows the count, for example `agents 2/4 · monitors 1/3`.
+While anything runs, the footer under the prompt shows the count against the limit, for example `🤖 2/4 👁 1/3` for subagents and monitors. A kind with nothing running is left out.
 
 Several subagents started in one message are decided one after another, and a subagent that was let through counts until it is visibly running — otherwise all of them would see an empty slot at the same moment.
 

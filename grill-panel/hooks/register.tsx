@@ -7,6 +7,7 @@ import {
   answerCurrent,
   answerOf,
   editAt,
+  footerOf,
   formatAnswers,
   goBack,
   isStoredRound,
@@ -20,7 +21,6 @@ import {
   resume,
   roundKeyOf,
   skipCurrent,
-  statusOf,
 } from './rounds'
 
 const PANE = 'grill'
@@ -55,12 +55,13 @@ async function prune($: EngineInterface): Promise<void> {
   }
 }
 
-function showStatus($: EngineInterface, value: Round | null): void {
-  $.ui.status(value === null ? undefined : statusOf(value))
-}
-
+// Unasked, a narrow terminal leaves the pane undrawn, and the count in the
+// footer alone does not say how to open it.
 async function openPane($: EngineInterface): Promise<void> {
-  await $.ui.open({ id: PANE, title: TITLE, focus: true, closeOnEscape: true })
+  const opened = await $.ui.open({ id: PANE, title: TITLE, focus: true, closeOnEscape: true })
+  if (!opened.isPlaced) {
+    $.ui.toast('Question round ready · /grill opens it', { timeoutMs: 10_000 })
+  }
 }
 
 // Moving the ring is a convenience: where it cannot move (a site without the
@@ -84,7 +85,6 @@ async function begin($: EngineInterface, questions: readonly Question[], isReviv
   }
   const value = newRound(key, questions, stored?.answers ?? [])
   await update($, round, () => value)
-  showStatus($, value)
   if (stored?.status === 'done') {
     await save($, value, 'open')
   }
@@ -106,7 +106,6 @@ async function restore($: EngineInterface): Promise<void> {
 
 async function reset($: EngineInterface): Promise<void> {
   await update($, round, () => null)
-  showStatus($, null)
   await $.ui.close({ id: PANE })
 }
 
@@ -116,10 +115,7 @@ async function finish($: EngineInterface, value: Round): Promise<void> {
 }
 
 async function change($: EngineInterface, apply: (value: Round) => Round): Promise<Round | null> {
-  const value = await update($, round, current => (current === null ? null : apply(current)))
-  showStatus($, value)
-
-  return value
+  return update($, round, current => (current === null ? null : apply(current)))
 }
 
 async function submit($: EngineInterface, text: string): Promise<void> {
@@ -400,6 +396,31 @@ export const register: Register = on => {
           </Box>
         </Box>
         <Text dimColor>{`${total - open}/${total} answered · Enter saves · Shift+Tab goes back · Esc closes, /grill reopens`}</Text>
+      </Box>
+    )
+  })
+
+  // The terminal draws the mode labels itself, so the label joins them there.
+  // On the desktop, status-band draws the footer from the labels it was handed,
+  // whichever order the mods load in; only a drawn tree survives that.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    const current = await read($, round)
+    if (current === null) {
+      return next(e)
+    }
+    const label = footerOf(current)
+    if (e.surface === 'terminal') {
+      return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+    }
+    const below = await next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const rest = below.type !== 'engine' ? below : e.props.modes.length === 0 ? null : <Text dimColor>{e.props.modes.join(' & ')}</Text>
+
+    return (
+      <Box flexDirection="row">
+        <Text dimColor>{label}</Text>
+        {rest !== null && <Text dimColor> · </Text>}
+        {rest}
       </Box>
     )
   })

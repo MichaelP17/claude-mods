@@ -39,6 +39,7 @@ declare module 'claude-code' {
       isAttached: boolean
       presence: Presence | null
       isActive: boolean
+      footer: string | null
     }
   }
 }

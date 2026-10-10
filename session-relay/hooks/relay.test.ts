@@ -10,6 +10,7 @@ import {
   parseCommand,
   previewOf,
   promptBlocksOf,
+  footerOf,
   statusOf,
 } from './relay'
 
@@ -117,6 +118,25 @@ test('the worker status says when another session holds the slot', () => {
 
   expect(statusOf({ ...base, tasks: [task], isActive: true })).toBe('⇄ clued · worker · task waiting')
   expect(statusOf({ ...base, tasks: [task], isActive: false })).toBe('⇄ clued · worker · another session is the worker')
+})
+
+test('the footer says the same in a few cells', () => {
+  const lead = { role: 'lead', channel: 'clued' } as const
+  const leadBase = { link: lead, answers: [], tasks: [], isAttached: false, isActive: false, now: 1_000_000 }
+  const answer = { id: 'a', text: 'x', finishedAt: 1 }
+
+  expect(footerOf({ ...leadBase, presence: null })).toBe('⇄ clued offline')
+  expect(footerOf({ ...leadBase, presence: { sessionId: 's', busySince: 1_000_000 - 720_000, seenAt: 999_000 } })).toBe('⇄ clued ⚙ 12m')
+  expect(footerOf({ ...leadBase, presence: { sessionId: 's', busySince: null, seenAt: 999_000 }, answers: [answer, answer] })).toBe('⇄ clued 📨 2')
+  expect(footerOf({ ...leadBase, presence: null, answers: [answer], isAttached: true })).toBe('⇄ clued offline 📎 1')
+
+  const worker = { role: 'worker', channel: 'clued' } as const
+  const task = { id: 't', text: 'x', isFresh: false, sentAt: 1 }
+  const workerBase = { link: worker, presence: null, answers: [], isAttached: false, now: 0 }
+
+  expect(footerOf({ ...workerBase, tasks: [], isActive: true })).toBe('⇄ clued worker')
+  expect(footerOf({ ...workerBase, tasks: [task], isActive: true })).toBe('⇄ clued worker 📥')
+  expect(footerOf({ ...workerBase, tasks: [task], isActive: false })).toBe('⇄ clued worker ⏸')
 })
 
 test('ids sort by time', () => {

@@ -6,6 +6,7 @@ import {
   USAGE,
   channelOf,
   folderNameOf,
+  footerOf,
   formatChars,
   forwardTextOf,
   isAnswer,
@@ -34,6 +35,7 @@ const offer = atom({ plugin: 'session-relay', key: 'offer' } as const, null)
 const isAttached = atom({ plugin: 'session-relay', key: 'isAttached' } as const, false)
 const presence = atom({ plugin: 'session-relay', key: 'presence' } as const, null)
 const isActive = atom({ plugin: 'session-relay', key: 'isActive' } as const, false)
+const footer = atom({ plugin: 'session-relay', key: 'footer' } as const, null)
 
 // Set from the plugin's options when the module registers.
 let settings = { minPromptChars: 300, isNotifying: true }
@@ -41,7 +43,6 @@ let poller: Timer | undefined
 let isPolling = false
 let isFirstPoll = true
 let lastHeartbeatAt = 0
-let lastStatus: string | undefined
 const announced = new Set<string>()
 // Answers can be long and are re-listed every poll; a file's content never
 // changes once written, so each is read once.
@@ -144,12 +145,12 @@ async function claim($: EngineInterface, current: Link, isForced: boolean, busyS
   await writePresence($, current.channel, busySince !== undefined ? busySince : isMine ? held.busySince : null)
 }
 
-async function refreshStatus($: EngineInterface): Promise<void> {
+async function refreshFooter($: EngineInterface): Promise<void> {
   const current = await read($, link)
-  const text =
+  const label =
     current === null
-      ? undefined
-      : statusOf({
+      ? null
+      : footerOf({
           link: current,
           presence: await read($, presence),
           answers: await read($, answers),
@@ -158,9 +159,8 @@ async function refreshStatus($: EngineInterface): Promise<void> {
           isActive: await read($, isActive),
           now: await $.clock.now(),
         })
-  if (text !== lastStatus) {
-    lastStatus = text
-    $.ui.status(text)
+  if (label !== (await read($, footer))) {
+    await update($, footer, () => label)
   }
 }
 
@@ -232,7 +232,7 @@ async function poll($: EngineInterface): Promise<void> {
       await pollWorker($, current, paths)
     }
     isFirstPoll = false
-    await refreshStatus($)
+    await refreshFooter($)
   } finally {
     isPolling = false
   }
@@ -283,7 +283,7 @@ async function leave($: EngineInterface): Promise<void> {
   await releaseWorkerSlot($, current)
   await update($, link, () => null)
   await resetView($)
-  await refreshStatus($)
+  await refreshFooter($)
   await $.ui.close({ id: PANE })
 }
 
@@ -356,7 +356,7 @@ async function takeTask($: EngineInterface, task: Task, isFresh: boolean): Promi
     await writeItem($, paths.toWorker, task)
     $.ui.toast(`session-relay could not hand the task over; it is kept. ${error instanceof Error ? error.message : String(error)}`)
   }
-  await refreshStatus($)
+  await refreshFooter($)
 }
 
 async function discardTask($: EngineInterface, task: Task): Promise<void> {
@@ -366,7 +366,7 @@ async function discardTask($: EngineInterface, task: Task): Promise<void> {
   }
   await removeItems($, (await pathsOf($, current.channel)).toWorker, [task.id])
   await update($, tasks, items => items.filter(i => i.id !== task.id))
-  await refreshStatus($)
+  await refreshFooter($)
 }
 
 async function dropAnswers($: EngineInterface, items: readonly Answer[]): Promise<void> {
@@ -380,12 +380,12 @@ async function dropAnswers($: EngineInterface, items: readonly Answer[]): Promis
   if (remaining.length === 0) {
     await update($, isAttached, () => false)
   }
-  await refreshStatus($)
+  await refreshFooter($)
 }
 
 async function attachAnswers($: EngineInterface, isOn: boolean): Promise<void> {
   await update($, isAttached, () => isOn)
-  await refreshStatus($)
+  await refreshFooter($)
   if (isOn) {
     $.ui.toast('The answer goes with your next prompt.')
   }
@@ -513,7 +513,7 @@ export const register: Register = (on, options) => {
     if (current?.role === 'worker') {
       await claim($, current, true)
     }
-    await refreshStatus($)
+    await refreshFooter($)
 
     return result
   })
@@ -532,7 +532,7 @@ export const register: Register = (on, options) => {
     const current = await read($, link)
     if (current?.role === 'worker') {
       await claim($, current, true, await $.clock.now())
-      await refreshStatus($)
+      await refreshFooter($)
     }
 
     return result
@@ -556,7 +556,7 @@ export const register: Register = (on, options) => {
     if (e.reason === 'answer' && e.answer.trim().length > 0) {
       await report($, current, e.answer)
     }
-    await refreshStatus($)
+    await refreshFooter($)
 
     return result
   })
@@ -765,6 +765,30 @@ export const register: Register = (on, options) => {
             <Text dimColor>{USAGE}</Text>
           </Box>
         )}
+      </Box>
+    )
+  })
+
+  // The terminal draws the mode labels itself, so the label joins them there.
+  // On the desktop, status-band draws the footer from the labels it was handed,
+  // whichever order the mods load in; only a drawn tree survives that.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    const label = await read($, footer)
+    if (label === null) {
+      return next(e)
+    }
+    if (e.surface === 'terminal') {
+      return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+    }
+    const below = await next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const rest = below.type !== 'engine' ? below : e.props.modes.length === 0 ? null : <Text dimColor>{e.props.modes.join(' & ')}</Text>
+
+    return (
+      <Box flexDirection="row">
+        <Text dimColor>{label}</Text>
+        {rest !== null && <Text dimColor> · </Text>}
+        {rest}
       </Box>
     )
   })

@@ -7,6 +7,7 @@ declare module 'claude-code' {
     'concurrency-guard': {
       monitors: TrackedMonitor[]
       overrides: LimitOverrides
+      footer: string | null
     }
   }
 }

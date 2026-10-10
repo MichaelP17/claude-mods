@@ -169,6 +169,31 @@ export function statusOf(input: StatusInput): string {
   return parts.join(' · ')
 }
 
+export function footerOf(input: StatusInput): string {
+  const { link, presence, answers, tasks, isAttached, isActive, now } = input
+  const parts = [`⇄ ${link.channel}`]
+  if (link.role === 'worker') {
+    parts.push('worker')
+    if (!isActive) {
+      parts.push('⏸')
+    } else if (tasks.length > 0) {
+      parts.push('📥')
+    }
+
+    return parts.join(' ')
+  }
+  if (!isOnline(presence, now)) {
+    parts.push('offline')
+  } else if (presence.busySince !== null) {
+    parts.push(`⚙ ${formatDuration(now - presence.busySince)}`)
+  }
+  if (answers.length > 0) {
+    parts.push(`${isAttached ? '📎' : '📨'} ${answers.length}`)
+  }
+
+  return parts.join(' ')
+}
+
 export function newId(now: number, random: number): string {
   const suffix = Math.floor(random * 36 ** 6)
     .toString(36)

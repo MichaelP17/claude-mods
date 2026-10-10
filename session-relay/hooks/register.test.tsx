@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 const HOME = '/Users/test'
 const RELAY = `${HOME}/.claude/relay/clued`
@@ -42,7 +43,6 @@ type World = {
   messages: { role: 'user' | 'assistant'; text: string; toolUses: [] }[]
   toasts: string[]
   notes: string[]
-  statuses: (string | undefined)[]
   submitted: { text: string; context: readonly string[] | undefined; origin: string }[]
   commands: string[]
 }
@@ -60,6 +60,14 @@ function childrenOf(files: Map<string, string>, directory: string) {
   return [...names].map(([name, kind]) => ({ name, kind, size: 0, mtimeMs: 0, isLink: false }))
 }
 
+async function footerText($: Engine): Promise<string | undefined> {
+  const ui = await $.ui.mount({ plugin: 'session-relay', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
+  const label = await ui.find({ type: 'Text', text: /⇄/ })
+  await ui.unmount()
+
+  return label?.text
+}
+
 function fakeEngine(on: On, root: string, files: Record<string, string> = {}, stored: Record<string, unknown> = {}) {
   const world: World = {
     files: new Map(Object.entries(files)),
@@ -67,7 +75,6 @@ function fakeEngine(on: On, root: string, files: Record<string, string> = {}, st
     messages: [],
     toasts: [],
     notes: [],
-    statuses: [],
     submitted: [],
     commands: [],
   }
@@ -111,11 +118,7 @@ function fakeEngine(on: On, root: string, files: Record<string, string> = {}, st
 
     return { value: { isSent: true, channel: 'ghostty' } }
   })
-  on('ui.status', (_$, e) => {
-    world.statuses.push(e.text)
-
-    return { value: undefined }
-  })
+  on('ui.render', { component: 'SessionMode' }, () => ({ type: 'engine', ref: 0 }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('prompt.submit', (_$, e) => {
@@ -149,7 +152,7 @@ test('a lead offers a fenced prompt from its answer and sends it to the worker',
   const { world } = fakeEngine(on, LEAD_ROOT)
   await $.session.start(startOf(LEAD_ROOT))
   await $.command.run({ command: 'relay', args: 'lead Clued', ...RUN })
-  expect(world.statuses.at(-1)).toBe('⇄ clued · no worker open')
+  expect(await footerText($)).toBe('⇄ clued offline')
 
   await $.turn.complete(turnOf(`Looks right.\n\n**Zum Einfügen:**\n\n\`\`\`\n${LONG}\n\`\`\`\n\n\`\`\`bash\nnode render.mjs\n\`\`\``))
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -200,7 +203,7 @@ test('a worker takes a task into a fresh session as the user\'s prompt and repor
 
   expect(JSON.parse(world.files.get(`${RELAY}/worker.json`) ?? '{}').sessionId).toBe('session-1')
   expect(world.toasts).toContain(`Task from the lead: ${LONG.slice(0, 69).trimEnd()}…`)
-  expect(world.statuses.at(-1)).toBe('⇄ clued · worker · task waiting')
+  expect(await footerText($)).toBe('⇄ clued worker 📥')
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'session-relay', surface, ...BAND })
@@ -237,7 +240,7 @@ test('a second worker session leaves a live worker alone until the person works 
   )
   await $.session.start(startOf(WORKER_ROOT))
 
-  expect(world.statuses.at(-1)).toBe('⇄ clued · worker · another session is the worker')
+  expect(await footerText($)).toBe('⇄ clued worker ⏸')
   expect(world.toasts).toEqual([])
   const ui = await $.ui.mount({ plugin: 'session-relay', surface: 'terminal', ...BAND })
   expect(await ui.find({ type: 'Text', text: /another session in this folder is the worker/ })).toBeDefined()
@@ -269,12 +272,12 @@ test('a lead announces answers, notifies for new ones and attaches them to the n
   world.files.set(`${RELAY}/worker.json`, JSON.stringify({ ...presence, seenAt: NOW + 2_000 }))
   await clock.advance(2_000)
   expect(world.notes).toEqual(['Handoff written.'])
-  expect(world.statuses.at(-1)).toBe('⇄ clued · 2 answers waiting')
+  expect(await footerText($)).toBe('⇄ clued 📨 2')
 
   const ui = await $.ui.mount({ plugin: 'session-relay', surface: 'desktop', ...BAND })
   expect(await ui.find({ type: 'Text', text: /^clued answered 2× · 16 chars · Handoff written\./ })).toBeDefined()
   await ui.press({ key: 'attach' })
-  expect(world.statuses.at(-1)).toBe('⇄ clued · 2 answers attached')
+  expect(await footerText($)).toBe('⇄ clued 📎 2')
   expect(await ui.find({ type: 'Text', text: /go with your next prompt/ })).toBeDefined()
   await ui.unmount()
 
@@ -283,7 +286,7 @@ test('a lead announces answers, notifies for new ones and attaches them to the n
   expect(submitted?.text).toBe('Slower please')
   expect(submitted?.context?.[0]).toContain('The latest 2 answers from the Claude session working on "clued"')
   expect(filesIn(world, `${RELAY}/to-lead`)).toEqual([])
-  expect(world.statuses.at(-1)).toBe('⇄ clued')
+  expect(await footerText($)).toBe('⇄ clued')
 })
 
 test('Forward now hands the answer to the lead as the user\'s message', async ($, on) => {
@@ -316,7 +319,7 @@ test('linking a worker folder as lead frees its worker slot and says what it was
   await $.command.run({ command: 'relay', args: 'lead relay-test', ...RUN })
   expect(world.files.has(`${RELAY}/worker.json`)).toBe(false)
   expect(world.toasts.at(-1)).toContain('This folder was the worker of clued until now.')
-  expect(world.statuses.at(-1)).toBe('⇄ relay-test · no worker open')
+  expect(await footerText($)).toBe('⇄ relay-test offline')
 })
 
 test('/relay off forgets the folder and frees the worker slot', async ($, on) => {
@@ -326,6 +329,6 @@ test('/relay off forgets the folder and frees the worker slot', async ($, on) =>
 
   await $.command.run({ command: 'relay', args: 'off', ...RUN })
   expect(world.files.has(`${RELAY}/worker.json`)).toBe(false)
-  expect(world.statuses.at(-1)).toBeUndefined()
+  expect(await footerText($)).toBeUndefined()
   expect(world.toasts.at(-1)).toBe('Left clued; this folder no longer joins it.')
 })

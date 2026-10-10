@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 import { parseQuestions, roundKeyOf } from './rounds'
 
@@ -46,9 +47,17 @@ type World = {
   store: Map<string, unknown>
   opened: string[]
   closed: string[]
-  statuses: (string | undefined)[]
   toasts: string[]
   submitted: string[]
+  isPlaced: boolean
+}
+
+async function footerText($: Engine): Promise<string | undefined> {
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
+  const label = await ui.find({ type: 'Text', text: /🔥/ })
+  await ui.unmount()
+
+  return label?.text
 }
 
 function fakeEngine(on: On, stored: Record<string, unknown> = {}, now = 100 * DAY): World {
@@ -57,9 +66,9 @@ function fakeEngine(on: On, stored: Record<string, unknown> = {}, now = 100 * DA
     store: new Map(Object.entries(stored)),
     opened: [],
     closed: [],
-    statuses: [],
     toasts: [],
     submitted: [],
+    isPlaced: true,
   }
   on('store.get', (_$, e) => ({ value: world.store.get(e.key) }))
   on('store.set', (_$, e) => {
@@ -84,18 +93,14 @@ function fakeEngine(on: On, stored: Record<string, unknown> = {}, now = 100 * DA
   on('ui.open', (_$, e) => {
     world.opened.push(e.id)
 
-    return { value: { isPlaced: true } }
+    return { value: world.isPlaced ? { isPlaced: true } : { isPlaced: false, reason: 'narrow' } }
   })
   on('ui.close', (_$, e) => {
     world.closed.push(e.id)
 
     return { value: undefined }
   })
-  on('ui.status', (_$, e) => {
-    world.statuses.push(e.text)
-
-    return { value: undefined }
-  })
+  on('ui.render', { component: 'SessionMode' }, () => ({ type: 'engine', ref: 0 }))
   on('ui.toast', (_$, e) => {
     world.toasts.push(e.text)
 
@@ -117,7 +122,7 @@ test('a turn ending on a round opens the panel on the first question', async ($,
   await $.turn.complete(TURN)
 
   expect(world.opened).toEqual(['grill'])
-  expect(world.statuses.at(-1)).toBe('Grill 0/3 · /grill')
+  expect(await footerText($)).toBe('🔥 0/3')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'grill-panel', surface, ...PANE })
     expect(await ui.find({ type: 'Text', text: /^Q1 · Answers$/ })).toBeDefined()
@@ -157,14 +162,24 @@ test('answering every question, the last by taking the recommendation, sends Q l
     expect(await ui.find({ key: 'edit-2', text: /recommendation accepted/ })).toBeDefined()
     await ui.unmount()
   }
-  expect(world.statuses.at(-1)).toBe('Grill 3/3 · /grill')
+  expect(await footerText($)).toBe('🔥 3/3')
 
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
   await ui.press({ key: 'send' })
   await ui.unmount()
   expect(world.submitted).toEqual(['Q1: In the panel\nfor sure\n\nQ2: grill-panel\n\nQ3: Recommendation accepted'])
   expect(world.closed).toEqual(['grill'])
-  expect(world.statuses.at(-1)).toBeUndefined()
+  expect(await footerText($)).toBeUndefined()
+})
+
+test('a pane a narrow terminal leaves undrawn is pointed to with a toast', async ($, on) => {
+  const world = fakeEngine(on)
+  world.isPlaced = false
+  await $.session.start(START)
+  await $.turn.complete(TURN)
+
+  expect(world.toasts).toEqual(['Question round ready · /grill opens it'])
+  expect(await footerText($)).toBe('🔥 0/3')
 })
 
 test('a question without a recommendation needs a typed answer', async ($, on) => {
@@ -247,7 +262,7 @@ test('after a restart the conversation ending on the round picks up where it sto
   await $.session.start(START)
 
   expect(world.opened).toEqual(['grill'])
-  expect(world.statuses.at(-1)).toBe('Grill 1/3 · /grill')
+  expect(await footerText($)).toBe('🔥 1/3')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'grill-panel', surface, ...PANE })
     expect(await ui.find({ type: 'Text', text: '✓ Q1 · Answers' })).toBeDefined()
@@ -284,7 +299,7 @@ test('/clear drops the round from the screen but keeps its answers', async ($, o
   await $.turn.complete(TURN)
   await $.classic.SessionStart({ source: 'clear' })
   expect(world.closed).toEqual(['grill'])
-  expect(world.statuses.at(-1)).toBeUndefined()
+  expect(await footerText($)).toBeUndefined()
 })
 
 test('a discarded round stays closed on resume, and /grill brings it back', async ($, on) => {

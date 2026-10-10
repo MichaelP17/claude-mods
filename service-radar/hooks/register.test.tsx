@@ -16,6 +16,8 @@ const PANE = {
 
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 120 } } as const
 
+const FOOTER = { plugin: 'service-radar', surface: 'desktop', component: 'SessionMode', props: { modes: [] } } as const
+
 function fakeDocker(on: On, calls: string[]) {
   let running = true
   on('process.run', (_$, e) => {
@@ -32,22 +34,19 @@ function fakeDocker(on: On, calls: string[]) {
 
 test('a detached compose stack is tracked, shown and stopped from the pane', async ($, on) => {
   const calls: string[] = []
-  const statuses: (string | undefined)[] = []
   mock.store(on)
   mock.env(on, { HOME: '/Users/test' })
   const clock = mock.clock(on)
   fakeDocker(on, calls)
   on('session.cwd', () => ({ value: '/repo' }))
-  on('ui.status', (_$, e) => {
-    statuses.push(e.text)
-
-    return { value: undefined }
-  })
+  on('ui.render', { component: 'SessionMode' }, () => ({ type: 'engine', ref: 0 }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
 
   await $.tool.call({ tool: 'Bash', command: 'cd app && docker compose up -d' })
-  expect(statuses.at(-1)).toBe('services 1')
+  const footer = await $.ui.mount(FOOTER)
+  expect(await footer.find({ type: 'Text', text: '🐳 1' })).toBeDefined()
+  await footer.unmount()
 
   await $.command.run({ command: 'services', args: '', ...RUN })
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -61,8 +60,10 @@ test('a detached compose stack is tracked, shown and stopped from the pane', asy
   await ui.press({ key: stopKey })
   await clock.advance(1)
   expect(calls).toContain('/repo/app $ docker compose down')
-  expect(statuses.at(-1)).toBeUndefined()
   await ui.unmount()
+  const emptyFooter = await $.ui.mount(FOOTER)
+  expect(await emptyFooter.find({ type: 'Text', text: /🐳/ })).toBeUndefined()
+  await emptyFooter.unmount()
 })
 
 test('/clear offers to stop running services first', async ($, on) => {
@@ -74,7 +75,6 @@ test('/clear offers to stop running services first', async ($, on) => {
   fakeDocker(on, calls)
   on('session.cwd', () => ({ value: '/repo' }))
   on('clock.now', () => ({ value: 0 }))
-  on('ui.status', () => ({ value: undefined }))
   on('ui.toast', () => ({ value: undefined }))
   on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
   on('tool.call', { tool: 'AskUserQuestion' }, (_$, e) => {
@@ -104,7 +104,6 @@ test('/clear without running services asks nothing', async ($, on) => {
 
     return { result: { questions: e.questions, answers: {} } }
   })
-  on('ui.status', () => ({ value: undefined }))
   on('command.run', { command: 'clear' }, () => ({ text: 'cleared' }))
 
   await $.command.run({ command: 'clear', args: '', ...RUN })
@@ -117,7 +116,6 @@ test('a bare desktop PATH still finds Homebrew tools', async ($, on) => {
   mock.env(on, { HOME: '/Users/test', PATH: '/usr/bin:/bin:/usr/sbin:/sbin' })
   mock.clock(on)
   on('session.cwd', () => ({ value: '/repo' }))
-  on('ui.status', () => ({ value: undefined }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('fs.exists', (_$, e) => ({ value: e.path === '/opt/homebrew/bin/docker' }))
   on('process.run', (_$, e) => {

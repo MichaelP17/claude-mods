@@ -26,7 +26,6 @@ async function loadServices($: EngineInterface): Promise<Service[]> {
 async function saveServices($: EngineInterface, list: Service[]): Promise<void> {
   await $.store.set(STORE_KEY, list)
   await update($, services, () => list)
-  $.ui.status(list.length === 0 ? undefined : `services ${list.length}`)
 }
 
 // The desktop app starts sessions with launchd's bare PATH, which lacks
@@ -263,6 +262,31 @@ export const register: Register = on => {
           <Button key="refresh" dimColor label="Refresh" onPress={() => inBackground($, async () => `${(await refresh($)).length} running`)} />
           <Button key="close" role="dismiss" dimColor label="Close" onPress={() => $.ui.close({ id: PANE })} />
         </Box>
+      </Box>
+    )
+  })
+
+  // The terminal draws the mode labels itself, so the label joins them there.
+  // On the desktop, status-band draws the footer from the labels it was handed,
+  // whichever order the mods load in; only a drawn tree survives that.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    const count = (await read($, services)).length
+    if (count === 0) {
+      return next(e)
+    }
+    const label = `🐳 ${count}`
+    if (e.surface === 'terminal') {
+      return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+    }
+    const below = await next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const rest = below.type !== 'engine' ? below : e.props.modes.length === 0 ? null : <Text dimColor>{e.props.modes.join(' & ')}</Text>
+
+    return (
+      <Box flexDirection="row">
+        <Text dimColor>{label}</Text>
+        {rest !== null && <Text dimColor> · </Text>}
+        {rest}
       </Box>
     )
   })
