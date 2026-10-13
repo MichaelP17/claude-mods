@@ -298,6 +298,50 @@ export function previewOf(answer: Answer | null, length = 60): string {
   return answer.text.includes('\n') && cut === first ? `${cut} …` : cut
 }
 
+export type Choice = { letter: string; text: string }
+
+export type Choices = { lead: string; options: Choice[] }
+
+const CHOICE_MARK = /(^|\s)\(([a-z])\)\s+/gu
+const CHOICE_EDGE = /[\s,;\-–—•*]+$/u
+const RECOMMENDED_CHOICE = /^[\s*_]*\(([a-z])\)/u
+
+// Models list the choices inline as "(a) … (b) …" as often as one per line.
+// Only a run starting at (a) with the letters in order counts, so a stray
+// "(b)" in the question text is left where it is.
+export function choicesOf(body: string): Choices {
+  const marks: { start: number; end: number; letter: string }[] = []
+  for (const match of body.matchAll(CHOICE_MARK)) {
+    const [whole, space = '', letter = ''] = match
+    if (letter === String.fromCharCode(97 + marks.length)) {
+      marks.push({ start: match.index + space.length, end: match.index + whole.length, letter })
+    }
+  }
+  const first = marks[0]
+  if (first === undefined || marks.length < 2) {
+    return { lead: body, options: [] }
+  }
+
+  return {
+    lead: body.slice(0, first.start).replace(CHOICE_EDGE, ''),
+    options: marks.map((mark, index) => ({
+      letter: mark.letter,
+      text: body
+        .slice(mark.end, marks[index + 1]?.start ?? body.length)
+        .replace(CHOICE_EDGE, '')
+        .replace(/\s+/gu, ' '),
+    })),
+  }
+}
+
+export function recommendedLetterOf(recommendation: string | null): string | null {
+  return recommendation === null ? null : (RECOMMENDED_CHOICE.exec(recommendation)?.[1] ?? null)
+}
+
+export function choiceAnswerOf(choice: Choice): string {
+  return `(${choice.letter}) ${choice.text}`
+}
+
 export function isStoredRound(value: unknown): value is StoredRound {
   if (typeof value !== 'object' || value === null) {
     return false

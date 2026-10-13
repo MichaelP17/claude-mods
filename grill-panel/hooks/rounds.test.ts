@@ -2,6 +2,8 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   answerCurrent,
+  choiceAnswerOf,
+  choicesOf,
   editAt,
   formatAnswers,
   goBack,
@@ -10,6 +12,7 @@ import {
   newRound,
   parseQuestions,
   previewOf,
+  recommendedLetterOf,
   roundKeyOf,
   skipCurrent,
 } from './rounds'
@@ -150,4 +153,32 @@ test('the review shows the first line of an answer', async () => {
   expect(previewOf({ kind: 'text', text: 'short' })).toBe('short')
   expect(previewOf({ kind: 'text', text: 'first\nsecond' })).toBe('first …')
   expect(previewOf({ kind: 'text', text: 'abcdefghij' }, 5)).toBe('abcd…')
+})
+
+test('choices written inline or one per line are split off the question', async () => {
+  expect(choicesOf('What is tomorrow? (a) A work day, evenings for projects (b) A day off (c) Mixed, e.g. half and half')).toEqual({
+    lead: 'What is tomorrow?',
+    options: [
+      { letter: 'a', text: 'A work day, evenings for projects' },
+      { letter: 'b', text: 'A day off' },
+      { letter: 'c', text: 'Mixed, e.g. half and half' },
+    ],
+  })
+  expect(choicesOf('Pick one:\n- (a) Panel\n- (b) Prompt box')).toEqual({
+    lead: 'Pick one:',
+    options: [
+      { letter: 'a', text: 'Panel' },
+      { letter: 'b', text: 'Prompt box' },
+    ],
+  })
+  expect(choicesOf('Only (a) one choice')).toEqual({ lead: 'Only (a) one choice', options: [] })
+  expect(choicesOf('See (b) first, then (a) Panel (b) Prompt').options.map(i => i.letter)).toEqual(['a', 'b'])
+  expect(choiceAnswerOf({ letter: 'b', text: 'A day off' })).toBe('(b) A day off')
+})
+
+test('a recommendation that opens with a choice names it', async () => {
+  expect(recommendedLetterOf('(a), since it is midweek.')).toBe('a')
+  expect(recommendedLetterOf('**(c)** mixed')).toBe('c')
+  expect(recommendedLetterOf('The panel (a)')).toBeNull()
+  expect(recommendedLetterOf(null)).toBeNull()
 })

@@ -15,6 +15,16 @@ Answers Claude's question rounds one question at a time. When Claude ends a turn
 | **Discard round** | asks first, then closes the round for good; `/grill` brings it back |
 | Esc, or the pane's close mark | the panel closes, the answers stay; `/grill` reopens it |
 
+The table describes the terminal. The desktop app and VS Code draw the same flow with their own controls:
+
+| Where | What you see |
+| --- | --- |
+| above the question | `Question 2 of 5` and a numbered button per question (`✓` once answered); a click jumps there |
+| choices written as `(a) … (b) …` | one row per choice with a letter button that saves it as the answer (`Q1: (b) A day off`); the choice the recommendation opens with is marked *Recommended* |
+| the recommendation | a framed card with **Accept** and **Edit before saving** |
+| below the field | **Skip for now**, and dimmed **Send now…** and **Discard** |
+| the review | one card per question with its full answer and **Edit**; open questions are framed in the warning color |
+
 The answers reach Claude as one message of yours. Until you send, nothing you type in the panel reaches Claude.
 
 No setup needed. Works in the terminal, the desktop app and VS Code; the mobile app draws no text field and says so.

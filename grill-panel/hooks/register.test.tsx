@@ -123,13 +123,61 @@ test('a turn ending on a round opens the panel on the first question', async ($,
 
   expect(world.opened).toEqual(['grill'])
   expect(await footerText($)).toBe('🔥 0/3')
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'grill-panel', surface, ...PANE })
-    expect(await ui.find({ type: 'Text', text: /^Q1 · Answers$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Markdown', text: '➡️ The panel' })).toBeDefined()
-    expect(await ui.find({ key: 'back' })).toBeUndefined()
-    await ui.unmount()
-  }
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: /^Q1 · Answers$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Markdown', text: '➡️ The panel' })).toBeDefined()
+  expect(await ui.find({ key: 'back' })).toBeUndefined()
+  await ui.unmount()
+
+  const desktop = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  expect(await desktop.find({ type: 'Text', text: 'Question 1 of 3' })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: 'Answers' })).toBeDefined()
+  expect(await desktop.find({ type: 'Markdown', text: 'The panel' })).toBeDefined()
+  expect(await desktop.find({ key: 'accept-recommendation' })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: /Shift\+Tab/ })).toBeUndefined()
+  await desktop.unmount()
+})
+
+test('on the desktop the choices of a question are buttons, the recommended one marked', async ($, on) => {
+  const world = fakeEngine(on)
+  await $.session.start(START)
+  const answer = [
+    '❓ **Q1** - **Day**: What is tomorrow? (a) A work day (b) A day off (c) Mixed',
+    '➡️ (a), since it is midweek.',
+    '',
+    '❓ **Q2** - **Focus**: What matters most?',
+    '➡️ Shipping',
+  ].join('\n')
+  await $.turn.complete({ ...TURN, answer })
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  expect(await ui.find({ type: 'Markdown', text: 'What is tomorrow?' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'A day off' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Recommended' })).toBeDefined()
+
+  await ui.press({ key: 'choice-1' })
+  expect(await ui.find({ type: 'Text', text: 'Focus' })).toBeDefined()
+  expect(await ui.find({ key: 'choice-0' })).toBeUndefined()
+
+  await ui.press({ key: 'accept-recommendation' })
+  expect(await ui.find({ type: 'Text', text: 'All questions answered' })).toBeDefined()
+  await ui.press({ key: 'send' })
+  await ui.unmount()
+  expect(world.submitted).toEqual(['Q1: (b) A day off\n\nQ2: Recommendation accepted'])
+})
+
+test('on the desktop the steps jump to any question', async ($, on) => {
+  fakeEngine(on)
+  await $.session.start(START)
+  await $.turn.complete(TURN)
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  await ui.input({ key: 'answer', text: 'Panel' })
+  expect(await ui.find({ key: 'goto-0', text: '✓ 1' })).toBeDefined()
+
+  await ui.press({ key: 'goto-2' })
+  expect(await ui.find({ type: 'Text', text: 'Question 3 of 3' })).toBeDefined()
+  await ui.press({ key: 'goto-0' })
+  expect(await ui.find({ key: 'answer', text: 'Panel' })).toBeDefined()
+  await ui.unmount()
 })
 
 test('a subagent turn, an interrupted one and one without questions leave the panel alone', async ($, on) => {
@@ -159,7 +207,12 @@ test('answering every question, the last by taking the recommendation, sends Q l
       await ui.input({ key: 'answer', text: '   ' })
     }
     expect(await ui.find({ type: 'Text', text: 'All questions answered' })).toBeDefined()
-    expect(await ui.find({ key: 'edit-2', text: /recommendation accepted/ })).toBeDefined()
+    if (surface === 'terminal') {
+      expect(await ui.find({ key: 'edit-2', text: /recommendation accepted/ })).toBeDefined()
+    } else {
+      expect(await ui.find({ type: 'Text', text: 'Recommendation accepted' })).toBeDefined()
+      expect(await ui.find({ key: 'edit-2' })).toBeDefined()
+    }
     await ui.unmount()
   }
   expect(await footerText($)).toBe('🔥 3/3')
@@ -232,7 +285,7 @@ test('sending early asks first and marks open questions', async ($, on) => {
   await ui.press({ key: 'send' })
   expect(await ui.find({ type: 'Text', text: /2 of 3 questions are unanswered/ })).toBeDefined()
   await ui.press({ key: 'cancel' })
-  expect(await ui.find({ type: 'Text', text: /^Q2 · Name$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Name' })).toBeDefined()
 
   await ui.press({ key: 'send' })
   await ui.press({ key: 'confirm-send' })
@@ -263,12 +316,15 @@ test('after a restart the conversation ending on the round picks up where it sto
 
   expect(world.opened).toEqual(['grill'])
   expect(await footerText($)).toBe('🔥 1/3')
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'grill-panel', surface, ...PANE })
-    expect(await ui.find({ type: 'Text', text: '✓ Q1 · Answers' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^Q2 · Name$/ })).toBeDefined()
-    await ui.unmount()
-  }
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: '✓ Q1 · Answers' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Q2 · Name$/ })).toBeDefined()
+  await ui.unmount()
+
+  const desktop = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  expect(await desktop.find({ key: 'goto-0', text: '✓ 1' })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: 'Question 2 of 3' })).toBeDefined()
+  await desktop.unmount()
 })
 
 test('a conversation that moved on past the round is not offered it again', async ($, on) => {

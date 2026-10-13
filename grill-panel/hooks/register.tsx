@@ -1,11 +1,13 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { ElementTable, EngineInterface, Register, RenderElement } from 'claude-code'
 
 import type { Question, Round, StoredRound } from '../types'
 import {
   FORMAT_CONTRACT,
   answerCurrent,
   answerOf,
+  choiceAnswerOf,
+  choicesOf,
   editAt,
   footerOf,
   formatAnswers,
@@ -18,6 +20,7 @@ import {
   parseQuestions,
   prefillRecommendation,
   previewOf,
+  recommendedLetterOf,
   resume,
   roundKeyOf,
   skipCurrent,
@@ -29,6 +32,8 @@ const STORE_PREFIX = 'round:'
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 const round = atom({ plugin: 'grill-panel', key: 'round' } as const, null)
+
+type RemoteElements = Pick<ElementTable<'desktop'>, 'Box' | 'Button' | 'Input' | 'Markdown' | 'Text'>
 
 async function loadStored($: EngineInterface, key: string): Promise<StoredRound | undefined> {
   const value = await $.store.get(key)
@@ -219,6 +224,205 @@ function headingOf(question: Question): string {
   return question.title.length > 0 ? `Q${question.number} · ${question.title}` : `Q${question.number}`
 }
 
+// Both discard buttons share the scope; only one of them is ever drawn.
+const DISCARD_HOVER = { scope: 'discard', color: 'error', dimColor: false } as const
+
+function drawStep($: EngineInterface, ui: RemoteElements, value: Round, index: number): RenderElement {
+  const { Button, Text } = ui
+  const number = String(index + 1)
+  const press = () => edit($, index)
+  if (index === value.current) {
+    return <Button key={`goto-${index}`} variant="primary" label={number} onPress={press} />
+  }
+  if (value.answers[index] !== null) {
+    return (
+      <Button key={`goto-${index}`} onPress={press}>
+        <Text color="success">✓</Text>
+        {` ${number}`}
+      </Button>
+    )
+  }
+  if (value.skipped[index] === true) {
+    return (
+      <Button key={`goto-${index}`} onPress={press}>
+        <Text color="warning">↷</Text>
+        {` ${number}`}
+      </Button>
+    )
+  }
+
+  return <Button key={`goto-${index}`} label={number} onPress={press} />
+}
+
+// The desktop and the editor draw native controls and borders, so the terminal's
+// glyph lists and key hints give way to steps, cards and buttons there.
+function drawRemote($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
+  const { Box, Button, Text } = ui
+  const total = value.questions.length
+  const open = openCount(value)
+
+  if (value.mode === 'sending') {
+    return <Text dimColor>Sending… Claude gets the answers as soon as it is free.</Text>
+  }
+
+  if (value.mode === 'confirm-send') {
+    return (
+      <Box flexDirection="column" rowGap={1} borderStyle="round" borderColor="warning" paddingX={1}>
+        <Text bold>Send with open questions?</Text>
+        <Text>{`${open} of ${total} questions are unanswered and go out as "(unanswered)".`}</Text>
+        <Box flexDirection="row" columnGap={1}>
+          <Button key="confirm-send" variant="primary" autoFocus label="➤ Send anyway" onPress={() => send($)} />
+          <Button key="cancel" label="✎ Keep answering" onPress={() => cancel($)} />
+        </Box>
+      </Box>
+    )
+  }
+
+  if (value.mode === 'confirm-discard') {
+    return (
+      <Box flexDirection="column" rowGap={1} borderStyle="round" borderColor="error" paddingX={1}>
+        <Text bold>Discard this round?</Text>
+        <Text>The panel stops offering it; /grill brings it back with its answers.</Text>
+        <Box flexDirection="row" columnGap={1}>
+          <Button key="cancel" variant="primary" autoFocus label="Keep round" onPress={() => cancel($)} />
+          <Button key="confirm-discard" onPress={() => discard($)}>
+            <Text color="error">✕ Discard</Text>
+          </Button>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (value.mode === 'review') {
+    return drawRemoteReview($, ui, value)
+  }
+
+  return drawRemoteQuestion($, ui, value)
+}
+
+function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
+  const { Box, Button, Input, Markdown, Text } = ui
+  const question = value.questions[value.current]
+  if (question === undefined) {
+    return <Text dimColor>No open question round. /grill brings back the latest one.</Text>
+  }
+  const total = value.questions.length
+  const answer = value.answers[value.current] ?? null
+  const choices = choicesOf(question.body)
+  const recommended = recommendedLetterOf(question.recommendation)
+
+  return (
+    <Box flexDirection="column" rowGap={1}>
+      <Box flexDirection="row" justifyContent="space-between">
+        <Text dimColor>{`Question ${value.current + 1} of ${total}`}</Text>
+        <Text dimColor>{`${total - openCount(value)} answered`}</Text>
+      </Box>
+      <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+        {value.questions.map((_, index) => drawStep($, ui, value, index))}
+      </Box>
+      <Text bold>{question.title.length > 0 ? question.title : `Question ${question.number}`}</Text>
+      {choices.lead.length > 0 && <Markdown text={choices.lead} />}
+      {choices.options.length > 0 && (
+        <Box flexDirection="column" rowGap={1}>
+          {choices.options.map((choice, index) => (
+            <Box key={`choice-row-${index}`} flexDirection="row" columnGap={1} alignItems="flex-start">
+              <Button
+                key={`choice-${index}`}
+                label={choice.letter.toUpperCase()}
+                {...(choice.letter === recommended ? { variant: 'primary' as const } : {})}
+                onPress={() => submit($, choiceAnswerOf(choice))}
+              />
+              <Box flexDirection="column" flexShrink={1}>
+                <Text hover={{ color: 'claude' }}>{choice.text}</Text>
+                {choice.letter === recommended && <Text color="claude">★ Recommended</Text>}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+      {question.recommendation !== null && (
+        <Box flexDirection="column" borderStyle="round" borderColor="claude" paddingX={1}>
+          <Text bold color="claude">
+            Recommendation
+          </Text>
+          <Markdown text={question.recommendation} />
+          <Box flexDirection="row" columnGap={1} marginTop={1}>
+            <Button key="accept-recommendation" onPress={() => submit($, '')}>
+              <Text color="success">✓</Text>
+              {answer?.kind === 'recommendation' ? ' Accepted' : ' Accept'}
+            </Button>
+            <Button key="edit-recommendation" label="✎ Edit before saving" onPress={() => useRecommendation($)} />
+          </Box>
+        </Box>
+      )}
+      <Box flexDirection="column" alignItems="stretch">
+        <Input
+          key="answer"
+          value={value.prefill ?? (answer?.kind === 'text' ? answer.text : '')}
+          placeholder={choices.options.length > 0 ? 'Or your own answer' : 'Your answer'}
+          submitLabel="Save"
+          autoFocus
+          onSubmit={text => {
+            void submit($, text)
+          }}
+        />
+      </Box>
+      <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap" columnGap={1}>
+        <Button key="skip" label="↷ Skip for now" onPress={() => skip($)} />
+        <Box flexDirection="row" columnGap={1}>
+          <Button key="send" dimColor label="➤ Send now…" onPress={() => requestSend($)} />
+          <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard" onPress={() => requestDiscard($)} />
+        </Box>
+      </Box>
+    </Box>
+  )
+}
+
+function drawRemoteReview($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
+  const { Box, Button, Text } = ui
+  const total = value.questions.length
+  const open = openCount(value)
+
+  return (
+    <Box flexDirection="column" rowGap={1}>
+      <Text bold>{open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`}</Text>
+      <Text dimColor>Check the answers, then send them to Claude in one message.</Text>
+      {value.questions.map((question, index) => {
+        const answer = value.answers[index] ?? null
+
+        return (
+          <Box
+            key={`card-${index}`}
+            flexDirection="row"
+            columnGap={1}
+            alignItems="center"
+            borderStyle="round"
+            {...(answer === null ? { borderColor: 'warning' } : { borderDimColor: true })}
+            hover={{ borderColor: 'claude', borderDimColor: false }}
+            paddingX={1}
+          >
+            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+              <Text dimColor>{question.title.length > 0 ? `${index + 1} · ${question.title}` : `Question ${index + 1}`}</Text>
+              {answer === null ? (
+                <Text color="warning">Unanswered</Text>
+              ) : answer.kind === 'recommendation' ? (
+                <Text color="claude">★ Recommendation accepted</Text>
+              ) : (
+                <Text>{answer.text}</Text>
+              )}
+            </Box>
+            <Button key={`edit-${index}`} dimColor hover={{ dimColor: false, color: 'claude' }} label="✎ Edit" onPress={() => edit($, index)} />
+          </Box>
+        )
+      })}
+      <Box flexDirection="row" justifyContent="space-between">
+        <Button key="send" variant="primary" autoFocus label="➤ Send to Claude" onPress={() => requestSend($)} />
+        <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard round" onPress={() => requestDiscard($)} />
+      </Box>
+    </Box>
+  )
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -288,9 +492,13 @@ export const register: Register = on => {
 
       return <Text dimColor>This app draws no text field; answer this round in the terminal or the desktop app.</Text>
     }
-    const { Box, Button, Input, Markdown, Text } = $.ui.resolve(e)
+    const elements = $.ui.resolve(e)
+    const { Box, Button, Input, Markdown, Text } = elements
     if (value === null) {
       return <Text dimColor>No open question round. /grill brings back the latest one.</Text>
+    }
+    if (e.surface !== 'terminal') {
+      return drawRemote($, elements, value)
     }
     const total = value.questions.length
     const open = openCount(value)
