@@ -8,6 +8,7 @@ declare module 'claude-code' {
       monitors: TrackedMonitor[]
       overrides: LimitOverrides
       footer: string | null
+      isHubbed: boolean
     }
   }
 }

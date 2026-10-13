@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderNode } from 'claude-code'
 
 import type { Usage } from '../types'
 import { spansOf } from './format'
@@ -26,6 +26,22 @@ async function refresh($: EngineInterface): Promise<void> {
     sevenDayPercent: windowOf('seven_day'),
   }
   await update($, usage, () => next)
+}
+
+// The desktop draws a footer's buttons ahead of its text, so a separator after
+// a tree of buttons alone would stand beside another mod's separator.
+function drawsText(node: RenderNode): boolean {
+  if (typeof node === 'string') {
+    return node.trim().length > 0
+  }
+  if (node.type === 'Button') {
+    return false
+  }
+  if (node.type === 'Box' || node.type === 'Text') {
+    return (node.children ?? []).some(drawsText)
+  }
+
+  return true
 }
 
 export const register: Register = on => {
@@ -78,10 +94,12 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const modes = e.props.modes.length === 0 ? null : <Text dimColor>{`${e.props.modes.join(' & ')} · `}</Text>
 
+    // flexShrink: the slot shrank the line to an ellipsis with room to spare
+    // before the model picker.
     return (
-      <Box flexDirection="row">
+      <Box flexDirection="row" flexShrink={0}>
         {below.type === 'engine' ? modes : below}
-        {below.type === 'engine' ? null : <Text dimColor> · </Text>}
+        {below.type !== 'engine' && drawsText(below) && <Text dimColor> · </Text>}
         <Text wrap="truncate-end">
           {spans.map((span, index) => (
             <Text key={`span-${index}`} color={span.color} dimColor={span.isDim}>

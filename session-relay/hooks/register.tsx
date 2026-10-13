@@ -1,7 +1,9 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, Register, RenderElement, Timer } from 'claude-code'
 
 import type { Answer, Link, Presence, Task } from '../types'
+import type { HubCall, HubEntry } from './hub'
+import { TONES, dotSvg } from './look'
 import {
   USAGE,
   channelOf,
@@ -36,6 +38,7 @@ const isAttached = atom({ plugin: 'session-relay', key: 'isAttached' } as const,
 const presence = atom({ plugin: 'session-relay', key: 'presence' } as const, null)
 const isActive = atom({ plugin: 'session-relay', key: 'isActive' } as const, false)
 const footer = atom({ plugin: 'session-relay', key: 'footer' } as const, null)
+const isHubbed = atom({ plugin: 'session-relay', key: 'isHubbed' } as const, false)
 
 // Set from the plugin's options when the module registers.
 let settings = { minPromptChars: 300, isNotifying: true }
@@ -43,6 +46,25 @@ let poller: Timer | undefined
 let isPolling = false
 let isFirstPoll = true
 let lastHeartbeatAt = 0
+let published: string | null = null
+
+// Without mod-hub the call throws, and the mod keeps its own footer label.
+async function publish($: EngineInterface, entry: HubEntry): Promise<void> {
+  const text = JSON.stringify(entry)
+  if (text === published) {
+    return
+  }
+  let isReached = true
+  try {
+    await ($ as unknown as HubCall).hub.set({ id: 'session-relay', ...entry })
+  } catch {
+    isReached = false
+  }
+  published = isReached ? text : null
+  if ((await read($, isHubbed)) !== isReached) {
+    await update($, isHubbed, () => isReached)
+  }
+}
 const announced = new Set<string>()
 // Answers can be long and are re-listed every poll; a file's content never
 // changes once written, so each is read once.
@@ -162,6 +184,14 @@ async function refreshFooter($: EngineInterface): Promise<void> {
   if (label !== (await read($, footer))) {
     await update($, footer, () => label)
   }
+  const waiting = current === null ? 0 : current.role === 'lead' ? (await read($, answers)).length : (await read($, tasks)).length
+  await publish($, {
+    icon: '⇄',
+    title: 'Relay',
+    status: label === null ? 'Off · /relay lead or /relay worker links a session' : label.replace(/^⇄ /, ''),
+    attention: waiting > 0 ? 'info' : 'none',
+    actions: current === null ? [] : [{ key: 'open', label: 'Open' }],
+  })
 }
 
 async function announceAnswers($: EngineInterface, current: Link, items: readonly Answer[], isQuiet: boolean): Promise<void> {
@@ -495,6 +525,8 @@ export const register: Register = (on, options) => {
     const stored = await $.store.get(`${LINK_PREFIX}${await $.session.root()}`)
     if (isLink(stored)) {
       await join($, stored, false)
+    } else {
+      await refreshFooter($)
     }
 
     return result
@@ -589,6 +621,12 @@ export const register: Register = (on, options) => {
     return {}
   })
 
+  on('ui.press', { plugin: 'mod-hub', element: 'session-relay:open' }, async ($, e, next) => {
+    await openPane($)
+
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const current = await read($, link)
     if (current === null || e.props.hasSurvey || e.props.isWorking) {
@@ -612,6 +650,114 @@ export const register: Register = (on, options) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const latest = items.at(-1)
     const blockCount = currentOffer?.blocks.length ?? 0
+    if (e.surface !== 'terminal') {
+      const drawCard = (key: string, title: string, detail: string, buttons: RenderElement) => (
+        <Box
+          key={key}
+          flexDirection="row"
+          columnGap={2}
+          alignItems="center"
+          borderStyle="round"
+          borderColor="claude"
+          paddingX={1}
+        >
+          <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+            <Text bold>{title}</Text>
+            <Text dimColor wrap="truncate-end">
+              {detail}
+            </Text>
+          </Box>
+          {buttons}
+        </Box>
+      )
+
+      return (
+        <Box flexDirection="column" rowGap={1}>
+          {current.role === 'lead' &&
+            block !== undefined &&
+            drawCard(
+              'offer',
+              `⇄ Prompt for ${current.channel}${blockCount > 1 ? ` · ${(currentOffer?.index ?? 0) + 1} of ${blockCount}` : ''}`,
+              `${formatChars(block.length)} · ${previewOf(block)}`,
+              <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+                <Button key="send" label="➤ Send" hotkey="s" variant="primary" onPress={() => sendTask($, block, false)} />
+                <Button key="send-fresh" label="✦ Fresh session" hotkey="n" onPress={() => sendTask($, block, true)} />
+                {blockCount > 1 && <Button key="other" label="Other block" hotkey="o" onPress={() => cycleOffer($)} />}
+                <Button key="view-offer" label="View" hotkey="v" onPress={() => openPane($)} />
+                <Button key="dismiss-offer" label="Dismiss" hotkey="x" role="dismiss" onPress={() => update($, offer, () => null)} />
+              </Box>,
+            )}
+          {current.role === 'lead' &&
+            latest !== undefined &&
+            attached &&
+            drawCard(
+              'attached',
+              `📎 ${items.length === 1 ? 'Answer' : `${items.length} answers`} from ${current.channel} attached`,
+              'They go with your next prompt',
+              <Box flexDirection="row" columnGap={1}>
+                <Button key="detach" label="Detach" hotkey="u" onPress={() => attachAnswers($, false)} />
+                <Button key="view-answers" label="View" hotkey="r" onPress={() => openPane($)} />
+              </Box>,
+            )}
+          {current.role === 'lead' &&
+            latest !== undefined &&
+            !attached &&
+            drawCard(
+              'answers',
+              `⇄ ${current.channel} answered${items.length > 1 ? ` ${items.length}×` : ''}`,
+              `${formatChars(latest.text.length)} · ${previewOf(latest.text)}`,
+              <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+                <Button
+                  key="attach"
+                  label="📎 Attach"
+                  hotkey="a"
+                  {...(block === undefined ? { variant: 'primary' as const } : {})}
+                  onPress={() => attachAnswers($, true)}
+                />
+                <Button key="forward" label="➤ Forward now" hotkey="f" onPress={() => forwardAnswers($)} />
+                <Button key="view-answers" label="View" hotkey="r" onPress={() => openPane($)} />
+                <Button key="discard-answers" label="Discard" hotkey="d" onPress={() => dropAnswers($, items)} />
+              </Box>,
+            )}
+          {current.role === 'worker' &&
+            task !== undefined &&
+            !active &&
+            drawCard(
+              'inactive',
+              `⇄ A task for ${current.channel} waits`,
+              'Another session in this folder is the worker',
+              <Button key="take-over" label="Take over" hotkey="t" variant="primary" onPress={() => claim($, current, true)} />,
+            )}
+          {current.role === 'worker' &&
+            task !== undefined &&
+            active &&
+            drawCard(
+              'task',
+              `⇄ Task from the lead${task.isFresh ? ' · for a fresh session' : ''}`,
+              `${formatChars(task.text.length)} · ${previewOf(task.text)}`,
+              <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+                <Button
+                  key="send-fresh"
+                  label="✦ Clear & send"
+                  hotkey="n"
+                  {...(task.isFresh ? { variant: 'primary' as const } : {})}
+                  onPress={() => takeTask($, task, true)}
+                />
+                <Button
+                  key="send"
+                  label="➤ Send here"
+                  hotkey="s"
+                  {...(task.isFresh ? {} : { variant: 'primary' as const })}
+                  onPress={() => takeTask($, task, false)}
+                />
+                <Button key="view-task" label="View" hotkey="v" onPress={() => openPane($)} />
+                <Button key="discard-task" label="Discard" hotkey="d" onPress={() => discardTask($, task)} />
+              </Box>,
+            )}
+          {beneath}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column">
@@ -700,7 +846,8 @@ export const register: Register = (on, options) => {
     const current = await read($, link)
     if (current === null) {
       return (
-        <Box flexDirection="column">
+        <Box flexDirection="column" rowGap={1}>
+          <Text bold>⇄ Relay</Text>
           <Text>This folder is not linked to a relay channel.</Text>
           <Text dimColor>{USAGE}</Text>
         </Box>
@@ -720,6 +867,76 @@ export const register: Register = (on, options) => {
     const items = await read($, answers)
     const task = (await read($, tasks)).at(-1)
     const isEmpty = current.role === 'lead' ? block === undefined && items.length === 0 : task === undefined
+    if (e.surface !== 'terminal') {
+      const ui = $.ui.resolve(e)
+      const Svg = 'Svg' in ui ? ui.Svg : null
+      const now = await $.clock.now()
+      const held = await read($, presence)
+      const active = await read($, isActive)
+      const dot =
+        current.role === 'worker'
+          ? { color: active ? TONES.success : TONES.neutral, isPulsing: active, alt: active ? 'this session is the worker' : 'another session is the worker' }
+          : !isOnline(held, now)
+            ? { color: TONES.neutral, isPulsing: false, alt: 'no worker open' }
+            : held.busySince !== null
+              ? { color: TONES.warning, isPulsing: true, alt: 'worker busy' }
+              : { color: TONES.success, isPulsing: false, alt: 'worker ready' }
+      const detail = status.split(' · ').slice(1).join(' · ')
+      const card = { flexDirection: 'column', rowGap: 1, borderStyle: 'round', paddingX: 1 } as const
+
+      return (
+        <Box flexDirection="column" rowGap={1}>
+          <Box flexDirection="row" columnGap={2} alignItems="center">
+            {Svg !== null && <Svg source={dotSvg(dot.color, dot.isPulsing)} alt={dot.alt} width={14} height={14} isInteractive />}
+            <Box flexDirection="column" flexShrink={1}>
+              <Text bold>{`⇄ ${current.channel}`}</Text>
+              <Text dimColor>{`${current.role === 'lead' ? 'Lead' : 'Worker'}${detail.length > 0 ? ` · ${detail}` : ''}`}</Text>
+            </Box>
+          </Box>
+          {current.role === 'lead' && block !== undefined && (
+            <Box key="offer" {...card} borderColor="claude">
+              <Text bold>{`Prompt for ${current.channel} · ${formatChars(block.length)}`}</Text>
+              <Markdown text={block} />
+              <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+                <Button key="pane-send" label="➤ Send" variant="primary" onPress={() => sendTask($, block, false)} />
+                <Button key="pane-send-fresh" label="✦ Send as fresh session" onPress={() => sendTask($, block, true)} />
+              </Box>
+            </Box>
+          )}
+          {current.role === 'lead' &&
+            items.map((answer, index) => (
+              <Box key={`answer-${answer.id}`} {...card} borderDimColor>
+                <Text bold>{`Answer ${index + 1} of ${items.length} · ${formatChars(answer.text.length)}`}</Text>
+                <Markdown text={answer.text} />
+              </Box>
+            ))}
+          {current.role === 'lead' && items.length > 0 && (
+            <Box key="answer-actions" flexDirection="row" columnGap={1} flexWrap="wrap">
+              <Button key="pane-attach" label="📎 Attach to next prompt" variant="primary" onPress={() => attachAnswers($, true)} />
+              <Button key="pane-forward" label="➤ Forward now" onPress={() => forwardAnswers($)} />
+              <Button key="pane-discard" dimColor label="✕ Discard" onPress={() => dropAnswers($, items)} />
+            </Box>
+          )}
+          {current.role === 'worker' && task !== undefined && (
+            <Box key="task" {...card} borderColor="claude">
+              <Text bold>{`Task from the lead · ${formatChars(task.text.length)}${task.isFresh ? ' · for a fresh session' : ''}`}</Text>
+              <Markdown text={task.text} />
+              <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+                <Button key="pane-clear-send" label="✦ Clear & send" {...(task.isFresh ? { variant: 'primary' as const } : {})} onPress={() => takeTask($, task, true)} />
+                <Button key="pane-send-here" label="➤ Send here" {...(task.isFresh ? {} : { variant: 'primary' as const })} onPress={() => takeTask($, task, false)} />
+                <Button key="pane-discard-task" dimColor label="✕ Discard" onPress={() => discardTask($, task)} />
+              </Box>
+            </Box>
+          )}
+          {isEmpty && (
+            <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+              <Text dimColor>Nothing pending.</Text>
+              <Text dimColor>{USAGE}</Text>
+            </Box>
+          )}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column">
@@ -779,6 +996,9 @@ export const register: Register = (on, options) => {
     }
     if (e.surface === 'terminal') {
       return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+    }
+    if (await read($, isHubbed)) {
+      return next(e)
     }
     const below = await next(e)
     const { Box, Text } = $.ui.resolve(e)

@@ -41,7 +41,7 @@ test('rollback needs a second, confirming press', async ($, on) => {
 
     await ui.press({ key: 'select-baseline' })
     expect(calls).toContainEqual(['diff', 'baseline'])
-    expect(await ui.find({ type: 'Text', text: /ran diff baseline/ })).toBeDefined()
+    expect(await ui.find({ type: surface === 'terminal' ? 'Text' : 'Code', text: /ran diff baseline/ })).toBeDefined()
 
     await ui.press({ key: 'arm' })
     expect(calls.some(i => i[0] === 'rollback')).toBe(false)
@@ -51,6 +51,35 @@ test('rollback needs a second, confirming press', async ($, on) => {
     await ui.unmount()
   }
   expect(scripts.every(i => i.endsWith('/config-snapshots/bin/claude-config'))).toBe(true)
+})
+
+test('the desktop pane takes a snapshot from its field and compares one in its card', async ($, on) => {
+  const calls: string[][] = []
+  mock.env(on, { HOME: '/Users/test' })
+  on('process.run', ($, e) => {
+    const args = e.argv.slice(1)
+    calls.push([...args])
+    const stdout = args[0] === 'list' ? LISTING : args[0] === 'diff' ? (args[1] === 'baseline' ? ' settings.json | 2 +-' : '') : `ran ${args.join(' ')}`
+
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.toast', () => ({ value: undefined }))
+
+  await $.command.run({ command: 'snapshots', args: '', ...RUN })
+  const ui = await $.ui.mount({ plugin: 'config-snapshots', surface: 'desktop', ...PANE })
+  await ui.input({ key: 'snapshot-name', text: '  Before the new plugin  ' })
+  expect(calls).toContainEqual(['snapshot', 'Before the new plugin'])
+  expect(await ui.find({ type: 'Text', text: 'ran snapshot Before the new plugin' })).toBeDefined()
+
+  await ui.press({ key: 'select-baseline' })
+  expect(await ui.find({ type: 'Code', text: /settings\.json/ })).toBeDefined()
+  await ui.press({ key: 'full-diff' })
+  expect(calls).toContainEqual(['diff', 'baseline', '--full'])
+
+  await ui.press({ key: 'select-initial-proper-mac-snapshot' })
+  expect(await ui.find({ type: 'Text', text: /Nothing changed since this snapshot/ })).toBeDefined()
+  await ui.unmount()
 })
 
 test('snapshot without a name explains the usage', async ($, on) => {

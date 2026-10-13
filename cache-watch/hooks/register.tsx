@@ -10,11 +10,14 @@ import {
   formatRemaining,
   formatTokens,
   handoffContextOf,
+  hubStatusOf,
   isCold,
   isMilestoneCommand,
   learnTtl,
   remainingMs,
 } from './cache'
+import type { HubCall, HubEntry } from './hub'
+import { TONES, ringSvg } from './look'
 
 const COMPACT_FIRST = 'Compact first'
 const SEND_AS_IS = 'Send as is'
@@ -32,11 +35,31 @@ const suggestion = atom({ plugin: 'cache-watch', key: 'suggestion' } as const, n
 const warnedFor = atom({ plugin: 'cache-watch', key: 'warnedFor' } as const, null)
 const isWorking = atom({ plugin: 'cache-watch', key: 'isWorking' } as const, false)
 const footer = atom({ plugin: 'cache-watch', key: 'footer' } as const, null)
+const isHubbed = atom({ plugin: 'cache-watch', key: 'isHubbed' } as const, false)
 
 // Set from the plugin's options when the module registers.
 let settings = { ttlMs: 60 * 60 * 1000, warnMs: 10 * 60 * 1000, largeContextTokens: 300_000, statusFromTokens: 300_000 }
 let hadMilestone = false
 let ticker: Timer | undefined
+let published: string | null = null
+
+// Without mod-hub the call throws, and the mod keeps its own footer countdown.
+async function publish($: EngineInterface, entry: HubEntry): Promise<void> {
+  const text = JSON.stringify(entry)
+  if (text === published) {
+    return
+  }
+  let isReached = true
+  try {
+    await ($ as unknown as HubCall).hub.set({ id: 'cache-watch', ...entry })
+  } catch {
+    isReached = false
+  }
+  published = isReached ? text : null
+  if ((await read($, isHubbed)) !== isReached) {
+    await update($, isHubbed, () => isReached)
+  }
+}
 
 // Written only on a change, so the ticker does not redraw the footer every
 // fifteen seconds for a minute count that stayed the same.
@@ -48,6 +71,14 @@ async function refreshFooter($: EngineInterface): Promise<void> {
   if (next?.label !== current?.label || next?.isExpiring !== current?.isExpiring) {
     await update($, footer, () => next)
   }
+  const canCompact = (await read($, suggestion)) !== null && !(await read($, isWorking))
+  await publish($, {
+    icon: '⏳',
+    title: 'Cache',
+    status: hubStatusOf(await read($, reading), now),
+    attention: next?.isExpiring === true ? 'warning' : 'none',
+    actions: canCompact ? [{ key: 'compact', label: 'Compact now' }] : [],
+  })
 }
 
 async function checkExpiring($: EngineInterface): Promise<void> {
@@ -253,6 +284,17 @@ export const register: Register = (on, options) => {
   // The terminal draws the mode labels itself, so the countdown joins them
   // there. On the desktop, status-band draws the footer from the labels it was
   // handed, whichever order the mods load in; only a drawn tree survives that.
+  // Offered only between turns, as the band above the prompt does.
+  on('ui.press', { plugin: 'mod-hub', element: 'cache-watch:compact' }, async ($, e, next) => {
+    if (await read($, isWorking)) {
+      $.ui.toast('Claude is working; compact once the turn is done.')
+    } else {
+      void compactNow($)
+    }
+
+    return next(e)
+  })
+
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const current = await read($, footer)
     if (current === null) {
@@ -260,6 +302,9 @@ export const register: Register = (on, options) => {
     }
     if (e.surface === 'terminal') {
       return next({ ...e, props: { ...e.props, modes: [...e.props.modes, current.label] } })
+    }
+    if (await read($, isHubbed)) {
+      return next(e)
     }
     const below = await next(e)
     const { Box, Text } = $.ui.resolve(e)
@@ -286,6 +331,48 @@ export const register: Register = (on, options) => {
     const beneath = below.type === 'engine' ? null : below
     const { Box, Button, Text } = $.ui.resolve(e)
     const text = BAND_TEXT[current.kind]
+    const writeHandoff = async () => {
+      await update($, suggestion, () => null)
+      await $.prompt.submit({ text: HANDOFF_PROMPT })
+    }
+    if (e.surface !== 'terminal' && e.surface !== 'mobile') {
+      const { Svg } = $.ui.resolve(e)
+      const now = await $.clock.now()
+      const cache = await read($, reading)
+      const remaining = remainingMs(cache, now) ?? 0
+      const color = current.kind === 'expiring' ? TONES.warning : TONES.accent
+
+      return (
+        <Box flexDirection="column">
+          <Box
+            key="cache-band"
+            flexDirection="row"
+            columnGap={2}
+            alignItems="center"
+            borderStyle="round"
+            borderColor={current.kind === 'expiring' ? 'warning' : 'claude'}
+            paddingX={1}
+          >
+            <Svg
+              source={ringSvg(remaining / cache.ttlMs, remaining === 0 ? 'cold' : formatRemaining(remaining), color)}
+              alt={remaining === 0 ? 'cache is cold' : `cache warm for ${formatRemaining(remaining)}`}
+              width={40}
+              height={40}
+            />
+            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+              <Text bold>{text.title}</Text>
+              <Text dimColor>{`${formatTokens(current.contextTokens)} context · ${text.hint}`}</Text>
+            </Box>
+            <Box flexDirection="row" columnGap={1}>
+              <Button key="compact" label="Compact" hotkey="c" variant="primary" onPress={() => compactNow($)} />
+              <Button key="handoff" label="Write handoff" hotkey="h" onPress={writeHandoff} />
+              <Button key="dismiss" label="Dismiss" hotkey="d" role="dismiss" onPress={() => update($, suggestion, () => null)} />
+            </Box>
+          </Box>
+          {beneath}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column">
@@ -296,15 +383,7 @@ export const register: Register = (on, options) => {
           </Text>
           <Box flexDirection="row" columnGap={1}>
             <Button key="compact" label="Compact" hotkey="c" variant="primary" onPress={() => compactNow($)} />
-            <Button
-              key="handoff"
-              label="Write handoff"
-              hotkey="h"
-              onPress={async () => {
-                await update($, suggestion, () => null)
-                await $.prompt.submit({ text: HANDOFF_PROMPT })
-              }}
-            />
+            <Button key="handoff" label="Write handoff" hotkey="h" onPress={writeHandoff} />
             <Button key="dismiss" label="Dismiss" hotkey="d" role="dismiss" onPress={() => update($, suggestion, () => null)} />
           </Box>
         </Box>

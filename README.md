@@ -15,6 +15,7 @@ Mods for [Claude Code](https://code.claude.com): small plugins of function hooks
 | [`grill-panel`](grill-panel/README.md) | Answers Claude's numbered question rounds one by one in a panel, keeps confirmed answers across restarts, and sends them back as `Q1: …` lines |
 | [`session-relay`](session-relay/README.md) | Passes prompts from a planning session to the session that does the work and its answers back, without copy and paste |
 | [`shell-shim`](shell-shim/README.md) | Fixes the zsh pitfalls Claude's bash-style commands trip over (`=` words, unmatched globs, word splitting, aliases that hide programs, a missing `timeout`) before the command runs |
+| [`mod-hub`](mod-hub/README.md) | One 🧰 button in the desktop footer for all mods: their status at a glance, and their panes one click away, also while Claude is working |
 
 Each mod is independent. Install only the ones you want.
 
@@ -42,10 +43,10 @@ Claude Code loads mods from the folders listed in the environment variable `CLAU
    cp ~/.claude/settings.json ~/.claude/settings.json.backup
    ```
 
-3. **Add the mod folders to `CLAUDE_CODE_PLUGIN_DIRS`.** Use absolute paths, separated by `:` (on Windows `;`). Keep every entry that is already there. This command appends all eleven mods and creates the `env` block if it is missing; remove the ones you do not want from `MODS`:
+3. **Add the mod folders to `CLAUDE_CODE_PLUGIN_DIRS`.** Use absolute paths, separated by `:` (on Windows `;`). Keep every entry that is already there. This command appends all twelve mods and creates the `env` block if it is missing; remove the ones you do not want from `MODS`:
 
    ```sh
-   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard:$HOME/claude-mods/service-radar:$HOME/claude-mods/cache-watch:$HOME/claude-mods/compact-shaper:$HOME/claude-mods/status-band:$HOME/claude-mods/idea-shell:$HOME/claude-mods/grill-panel:$HOME/claude-mods/session-relay:$HOME/claude-mods/shell-shim"
+   MODS="$HOME/claude-mods/config-snapshots:$HOME/claude-mods/machine-guard:$HOME/claude-mods/concurrency-guard:$HOME/claude-mods/service-radar:$HOME/claude-mods/cache-watch:$HOME/claude-mods/compact-shaper:$HOME/claude-mods/status-band:$HOME/claude-mods/idea-shell:$HOME/claude-mods/grill-panel:$HOME/claude-mods/session-relay:$HOME/claude-mods/shell-shim:$HOME/claude-mods/mod-hub"
    jq --arg mods "$MODS" '.env.CLAUDE_CODE_PLUGIN_DIRS = (if (.env.CLAUDE_CODE_PLUGIN_DIRS // "") == "" then $mods else .env.CLAUDE_CODE_PLUGIN_DIRS + ":" + $mods end)' \
      ~/.claude/settings.json > /tmp/settings.json && mv /tmp/settings.json ~/.claude/settings.json
    ```
@@ -56,7 +57,7 @@ Claude Code loads mods from the folders listed in the environment variable `CLAU
 
 5. **Restart Claude Code.** Mods are loaded at startup. The desktop app reads the same `env` block, so the mods load there too once it is restarted.
 
-6. **Check that they loaded:** typing `/` lists `/snapshot`, `/snapshots` and `/rollback` when `config-snapshots` is active, `/prune-preview` when `compact-shaper` is, `/idea` and `/ideas` when `idea-shell` is, `/grill` when `grill-panel` is, and `/relay` when `session-relay` is; the other mods show themselves when they act, as described in their READMEs. A mod that fails to load is named in a dim line in the transcript; `claude --debug` shows the reason.
+6. **Check that they loaded:** typing `/` lists `/snapshot`, `/snapshots` and `/rollback` when `config-snapshots` is active, `/prune-preview` when `compact-shaper` is, `/idea` and `/ideas` when `idea-shell` is, `/grill` when `grill-panel` is, `/relay` when `session-relay` is, and `/hub` when `mod-hub` is; the other mods show themselves when they act, as described in their READMEs. A mod that fails to load is named in a dim line in the transcript; `claude --debug` shows the reason.
 
 ## Installing with Claude Code
 

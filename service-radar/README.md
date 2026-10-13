@@ -7,7 +7,7 @@ Claude Code already lists its own background shells and subagents. What it does 
 | When | What you see |
 | --- | --- |
 | Nothing Claude started is running | nothing |
-| Something is running | `🐳 2` in the footer under the prompt |
+| Something is running | `🐳 2` in the footer under the prompt; in the desktop app a click on it opens the pane, also while Claude is working |
 | You want details | `/services` opens a pane: name, folder, start time, a **Stop** button per service, **Stop all**, **Refresh** |
 | `/clear` while something runs | a dialog listing the services: **Stop all** or **Keep running** |
 | A new session starts while services from an earlier one still run | a toast pointing to `/services` |
@@ -34,8 +34,10 @@ Services are matched in chained commands too, including a preceding `cd`: in `cd
 - The list is kept across sessions, because services outlive them. Exiting Claude Code cannot show a dialog, so the next session reminds you instead.
 - Only commands Claude runs through its Bash tool are seen. Services you start yourself are not listed.
 - A tracked start is recognised behind `sudo`, `nohup`, `env` and similar prefixes and when sent to the background with `&`. Other programs sent to the background, such as `npm run dev &`, are not tracked; Claude Code's own background shells list and stop those.
+- In the terminal, `/services` opens at once, also while Claude is working; the desktop app holds a slash command typed mid-turn until the turn ends, so the `🐳` in the footer is the way in there. Nothing of it reaches Claude's context, and a service Claude starts while the pane checks the list is kept.
 - Stopping runs in the background after a press, so a slow stop (Colima takes about ten seconds) is never cut short.
 - Checks run with a 20-second timeout and never delay the start of a session.
+- With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the `🐳` count to its 🧰, whose Services row shows the count and opens the pane.
 
 ## Uninstall
 

@@ -1,6 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { ElementTable, EngineInterface, Register, RenderElement } from 'claude-code'
 
+import type { HubCall, HubEntry } from './hub'
 import { formatIdeas, ideasFileOf, normalizeIdea, numberedList, parseIdeas, previewOf } from './ideas'
 
 const CAPTURE_PANE = 'idea'
@@ -9,6 +10,27 @@ const LIST_TOOL = 'mcp__idea-shell__ideas_list'
 const REMOVE_TOOL = 'mcp__idea-shell__idea_remove'
 
 const ideas = atom({ plugin: 'idea-shell', key: 'ideas' } as const, [])
+const isHubbed = atom({ plugin: 'idea-shell', key: 'isHubbed' } as const, false)
+
+let published: string | null = null
+
+// Without mod-hub the call throws, and the mod keeps its own footer bulb.
+async function publish($: EngineInterface, entry: HubEntry): Promise<void> {
+  const text = JSON.stringify(entry)
+  if (text === published) {
+    return
+  }
+  let isReached = true
+  try {
+    await ($ as unknown as HubCall).hub.set({ id: 'idea-shell', ...entry })
+  } catch {
+    isReached = false
+  }
+  published = isReached ? text : null
+  if ((await read($, isHubbed)) !== isReached) {
+    await update($, isHubbed, () => isReached)
+  }
+}
 
 async function ideasFile($: EngineInterface): Promise<string> {
   const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''
@@ -25,6 +47,7 @@ async function load($: EngineInterface): Promise<string[]> {
   const text = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
   const list = parseIdeas(text)
   await update($, ideas, () => list)
+  await report($, list)
 
   return list
 }
@@ -37,6 +60,17 @@ async function save($: EngineInterface, list: string[]): Promise<void> {
     await $.process.run(['rm', '-f', path])
   }
   await update($, ideas, () => list)
+  await report($, list)
+}
+
+async function report($: EngineInterface, list: readonly string[]): Promise<void> {
+  await publish($, {
+    icon: '💡',
+    title: 'Ideas',
+    status: list.length === 0 ? 'None for this folder' : `${list.length} for this folder`,
+    attention: 'none',
+    actions: [{ key: 'open', label: 'Open' }],
+  })
 }
 
 async function addIdea($: EngineInterface, text: string): Promise<boolean> {
@@ -71,6 +105,104 @@ async function workOn($: EngineInterface, idea: string): Promise<void> {
   }
   await removeIdea($, idea)
   await $.ui.close({ id: LIST_PANE })
+  if (await isDrawnRemotely($)) {
+    await $.ui.close({ id: CAPTURE_PANE })
+  }
+}
+
+// The desktop app and the editor draw one Ideas pane, the field above the list;
+// the terminal keeps the inline capture field apart from the list.
+async function isDrawnRemotely($: EngineInterface): Promise<boolean> {
+  const surfaces = await $.session.surfaces()
+
+  return surfaces.some(i => i !== 'terminal')
+}
+
+async function openCapture($: EngineInterface): Promise<void> {
+  await load($)
+  const isRemote = await isDrawnRemotely($)
+  await $.ui.open({ id: CAPTURE_PANE, title: isRemote ? 'Ideas' : 'New idea', focus: true, closeOnEscape: true, rows: 4 })
+}
+
+async function openList($: EngineInterface): Promise<void> {
+  if (await isDrawnRemotely($)) {
+    await openCapture($)
+    return
+  }
+  await load($)
+  await $.ui.open({ id: LIST_PANE, title: 'Ideas', focus: true, closeOnEscape: true })
+}
+
+type IdeasElements = Pick<ElementTable<'desktop'>, 'Box' | 'Button' | 'Text'> & { Input: ElementTable<'desktop'>['Input'] | null }
+
+function drawIdeas($: EngineInterface, ui: IdeasElements, list: readonly string[], folder: string): RenderElement {
+  const { Box, Button, Input, Text } = ui
+
+  return (
+    <Box flexDirection="column" rowGap={1}>
+      <Box flexDirection="row" justifyContent="space-between" alignItems="flex-end">
+        <Text bold>💡 Ideas</Text>
+        <Text dimColor>{list.length === 0 ? folder : `${list.length} waiting in ${folder}`}</Text>
+      </Box>
+      {Input !== null && (
+        <Box flexDirection="column">
+          <Input
+            key="idea"
+            value=""
+            placeholder="Capture a new idea…"
+            submitLabel="Save"
+            autoFocus
+            onSubmit={value => {
+              void addIdea($, value)
+            }}
+          />
+          <Text dimColor>Enter saves it here · Claude sees an idea only once you hand it over</Text>
+        </Box>
+      )}
+      {list.length === 0 ? (
+        <Box borderStyle="round" borderDimColor paddingX={1} justifyContent="center">
+          <Text dimColor>No ideas yet. The next one that crosses your mind goes in the field above.</Text>
+        </Box>
+      ) : (
+        <Box flexDirection="column" rowGap={1}>
+          <Text dimColor bold>
+            WAITING
+          </Text>
+          {list.map((idea, index) => (
+            <Box
+              key={`card-${index}`}
+              flexDirection="row"
+              columnGap={2}
+              alignItems="center"
+              borderStyle="round"
+              borderDimColor
+              hover={{ borderColor: 'claude', borderDimColor: false }}
+              paddingX={1}
+            >
+              <Box flexGrow={1} flexShrink={1}>
+                <Text>{idea}</Text>
+              </Box>
+              <Box flexDirection="row" columnGap={1}>
+                <Button key={`work-${index}`} label="➤ Work on it" onPress={() => workOn($, idea)} />
+                <Button
+                  key={`delete-${index}`}
+                  dimColor
+                  hover={{ color: 'error', dimColor: false }}
+                  label="✕"
+                  onPress={() => removeIdea($, idea)}
+                />
+              </Box>
+            </Box>
+          ))}
+          <Text dimColor>Work on it moves the idea into the prompt box and off this list.</Text>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+function folderNameOf(root: string): string {
+  return root.split('/').filter(i => i.length > 0).at(-1) ?? root
 }
 
 function textResult(text: string) {
@@ -88,6 +220,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'ideas',
       description: 'Show the ideas captured for this folder and hand one to Claude',
+      immediate: true,
     })
     await $.tool.register({
       name: 'ideas_list',
@@ -125,17 +258,22 @@ export const register: Register = on => {
 
       return {}
     }
-    await load($)
-    await $.ui.open({ id: CAPTURE_PANE, title: 'New idea', focus: true, closeOnEscape: true, rows: 4 })
+    await openCapture($)
 
     return {}
   })
 
   on('command.run', { command: 'ideas' }, async $ => {
-    await load($)
-    await $.ui.open({ id: LIST_PANE, title: 'Ideas', focus: true, closeOnEscape: true })
+    await openList($)
 
     return {}
+  })
+
+  on('ui.press', { plugin: 'mod-hub', element: 'idea-shell:open' }, async ($, e, next) => {
+    const list = await load($)
+    await (list.length === 0 ? openCapture($) : openList($))
+
+    return next(e)
   })
 
   on('tool.call', { tool: LIST_TOOL }, async $ => {
@@ -164,12 +302,16 @@ export const register: Register = on => {
 
       return <Text dimColor>This app draws no text field. /idea followed by the idea saves it.</Text>
     }
-    const { Box, Input, Text } = $.ui.resolve(e)
+    if (e.surface !== 'terminal') {
+      const { Box, Button, Input, Text } = $.ui.resolve(e)
+
+      // Reading the list makes every save redraw the pane, which empties the field.
+      return drawIdeas($, { Box, Button, Input, Text }, await read($, ideas), folderNameOf(await $.session.root()))
+    }
     // Reading the list makes every save redraw the pane, which empties the field.
     const count = (await read($, ideas)).length
-    // The desktop app's field is a single line, where Shift+Enter saves like Enter.
-    const lineBreak = e.surface === 'terminal' ? ' · Shift+Enter adds a line' : ''
-    const hint = `${count} ${count === 1 ? 'idea' : 'ideas'} for this folder${lineBreak} · Esc closes`
+    const { Box, Input, Text } = $.ui.resolve(e)
+    const hint = `${count} ${count === 1 ? 'idea' : 'ideas'} for this folder · Shift+Enter adds a line · Esc closes`
 
     return (
       <Box flexDirection="column">
@@ -191,6 +333,9 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: LIST_PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, ideas)
+    if (e.surface !== 'terminal') {
+      return drawIdeas($, { Box, Button, Input: null, Text }, list, folderNameOf(await $.session.root()))
+    }
     if (list.length === 0) {
       return <Text dimColor>No ideas for this folder. /idea captures one.</Text>
     }
@@ -213,23 +358,26 @@ export const register: Register = on => {
   // The terminal draws the mode labels itself, so the count joins them there.
   // On the desktop, status-band draws the footer from the labels it was handed,
   // whichever order the mods load in; only a drawn tree survives that.
+  // The desktop app holds a slash command typed mid-turn until the turn ends,
+  // so the bulb is drawn even with no ideas: its press reaches the mod at once.
+  // With mod-hub loaded, its toolbox takes that place.
+  // The desktop draws a footer's buttons ahead of its text, so the bulb takes
+  // no separator; one would end up beside the next mod's.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const count = (await read($, ideas)).length
-    if (count === 0) {
+    if (e.surface === 'terminal') {
+      return count === 0 ? next(e) : next({ ...e, props: { ...e.props, modes: [...e.props.modes, `💡 ${count}`] } })
+    }
+    if (await read($, isHubbed)) {
       return next(e)
     }
-    const label = `💡 ${count}`
-    if (e.surface === 'terminal') {
-      return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
-    }
     const below = await next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const rest = below.type !== 'engine' ? below : e.props.modes.length === 0 ? null : <Text dimColor>{e.props.modes.join(' & ')}</Text>
 
     return (
-      <Box flexDirection="row">
-        <Text dimColor>{label}</Text>
-        {rest !== null && <Text dimColor> · </Text>}
+      <Box flexDirection="row" alignItems="center">
+        <Button key="capture-idea" plain dimColor label={count === 0 ? '💡' : `💡 ${count}`} onPress={() => openCapture($)} />
         {rest}
       </Box>
     )

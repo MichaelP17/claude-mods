@@ -1,0 +1,7 @@
+{
+  "name": "mod-hub",
+  "version": "0.1.0",
+  "author": { "name": "Michael Prömpler" },
+  "description": "One toolbox button in the desktop footer that shows what every mod reports and opens their panes, also while Claude is working",
+  "types": "./types/index.d.ts"
+}

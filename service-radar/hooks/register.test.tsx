@@ -45,7 +45,7 @@ test('a detached compose stack is tracked, shown and stopped from the pane', asy
 
   await $.tool.call({ tool: 'Bash', command: 'cd app && docker compose up -d' })
   const footer = await $.ui.mount(FOOTER)
-  expect(await footer.find({ type: 'Text', text: '🐳 1' })).toBeDefined()
+  expect(await footer.find({ key: 'open-services', text: '🐳 1' })).toBeDefined()
   await footer.unmount()
 
   await $.command.run({ command: 'services', args: '', ...RUN })
@@ -62,7 +62,7 @@ test('a detached compose stack is tracked, shown and stopped from the pane', asy
   expect(calls).toContain('/repo/app $ docker compose down')
   await ui.unmount()
   const emptyFooter = await $.ui.mount(FOOTER)
-  expect(await emptyFooter.find({ type: 'Text', text: /🐳/ })).toBeUndefined()
+  expect(await emptyFooter.find({ key: 'open-services' })).toBeUndefined()
   await emptyFooter.unmount()
 })
 
@@ -131,4 +131,43 @@ test('a bare desktop PATH still finds Homebrew tools', async ($, on) => {
   expect(runs.length).toBeGreaterThan(0)
   expect(runs.every(i => i.argv[0] === '/opt/homebrew/bin/docker')).toBe(true)
   expect(runs.every(i => i.path === '/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin')).toBe(true)
+})
+
+test('a service Claude starts while /services checks the list is kept', async ($, on) => {
+  let release = () => {}
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  let entered = () => {}
+  const isChecking = new Promise<void>(resolve => {
+    entered = resolve
+  })
+  let checks = 0
+  mock.store(on)
+  mock.env(on, { HOME: '/Users/test' })
+  mock.clock(on)
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('ui.render', { component: 'SessionMode' }, () => ({ type: 'engine', ref: 0 }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+  on('process.run', async (_$, e) => {
+    if (e.argv.includes('ps') && checks++ === 0) {
+      entered()
+      await gate
+    }
+
+    return { value: { exitCode: 0, stdout: e.argv.includes('ps') ? 'abc123\n' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  await $.tool.call({ tool: 'Bash', command: 'cd app && docker compose up -d' })
+  const opening = $.command.run({ command: 'services', args: '', ...RUN })
+  await isChecking
+  await $.tool.call({ tool: 'Bash', command: 'cd web && docker compose up -d' })
+  release()
+  await opening
+
+  const ui = await $.ui.mount({ plugin: 'service-radar', surface: 'desktop', ...PANE })
+  expect(await ui.find({ type: 'Text', text: /docker compose: app/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /docker compose: web/ })).toBeDefined()
+  await ui.unmount()
 })

@@ -38,6 +38,7 @@ Claude learns the format from the refusal, so nothing has to be configured. For 
 - Only typed prompts raise limits. Messages from subagents, other sessions or task notifications never do.
 - Running subagents come from Claude Code itself. Monitors are counted by the mod from their start until `TaskStop`, their timeout or their end notification; a monitor started before the mod was loaded is not counted.
 - Only starts through Claude's Agent tool are gated. Subagents that workflows or other plugins start are not stopped, but they count toward the running total.
+- With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the running count to its 🧰, whose Concurrency row shows it.
 
 ## Uninstall
 

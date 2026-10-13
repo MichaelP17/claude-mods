@@ -16,10 +16,18 @@ const PANE_PROPS = {
 const CAPTURE = { component: 'Pane', requestId: 'idea', props: { title: 'New idea', ...PANE_PROPS } } as const
 const LIST = { component: 'Pane', requestId: 'ideas', props: { title: 'Ideas', ...PANE_PROPS } } as const
 
-type Disk = { files: Map<string, string>; fills: string[]; closed: string[]; modes: (readonly string[])[] }
+type Disk = {
+  files: Map<string, string>
+  fills: string[]
+  opened: string[]
+  closed: string[]
+  modes: (readonly string[])[]
+  surfaces: ('terminal' | 'desktop')[]
+}
 
 function fakeSession(on: On, files: Record<string, string> = {}): Disk {
-  const disk: Disk = { files: new Map(Object.entries(files)), fills: [], closed: [], modes: [] }
+  const disk: Disk = { files: new Map(Object.entries(files)), fills: [], opened: [], closed: [], modes: [], surfaces: ['terminal'] }
+  on('session.surfaces', () => ({ value: disk.surfaces }))
   mock.env(on, { HOME: '/Users/test' })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
@@ -45,7 +53,11 @@ function fakeSession(on: On, files: Record<string, string> = {}): Disk {
 
     return { isFilled: true }
   })
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', (_$, e) => {
+    disk.opened.push(e.id)
+
+    return { value: { isPlaced: true } }
+  })
   on('ui.close', (_$, e) => {
     disk.closed.push(e.id)
 
@@ -81,11 +93,14 @@ test('the capture pane saves each submit, multi-line ones included', async ($, o
     await ui.input({ key: 'idea', text: 'Split the importer\nby source', kind: 'submit' })
     await ui.input({ key: 'idea', text: '   ', kind: 'submit' })
     expect(disk.files.get(FILE)).toBe('- Split the importer\n  by source\n')
-    expect(await ui.find({ type: 'Text', text: /1 idea for this folder/ })).toBeDefined()
     const lineBreakHint = await ui.find({ type: 'Text', text: /Shift\+Enter adds a line/ })
     if (surface === 'terminal') {
+      expect(await ui.find({ type: 'Text', text: /1 idea for this folder/ })).toBeDefined()
       expect(lineBreakHint).toBeDefined()
     } else {
+      expect(await ui.find({ type: 'Text', text: '1 waiting in app' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: 'Split the importer\nby source' })).toBeDefined()
+      expect(await ui.find({ key: 'work-0' })).toBeDefined()
       expect(lineBreakHint).toBeUndefined()
     }
     await ui.unmount()
@@ -106,7 +121,9 @@ test('/ideas hands an idea to the prompt, and the last removal deletes the file'
   await $.session.start({ cwd: '/Users/test/Projects/app', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'ideas', args: '', ...RUN })
 
-  const ui = await $.ui.mount({ plugin: 'idea-shell', surface: 'desktop', ...LIST })
+  expect(disk.opened).toEqual(['ideas'])
+
+  const ui = await $.ui.mount({ plugin: 'idea-shell', surface: 'terminal', ...LIST })
   await ui.press({ key: 'work-0' })
   expect(disk.fills).toEqual(['first'])
   expect(disk.closed).toEqual(['ideas'])
@@ -115,6 +132,29 @@ test('/ideas hands an idea to the prompt, and the last removal deletes the file'
   await ui.press({ key: 'delete-0' })
   expect(disk.files.has(FILE)).toBe(false)
   expect(await ui.find({ type: 'Text', text: /No ideas for this folder/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the desktop app gets one Ideas pane: the field above the waiting ideas', async ($, on) => {
+  const disk = fakeSession(on, { [FILE]: '- first\n- second\n' })
+  disk.surfaces = ['desktop']
+  await $.session.start({ cwd: '/Users/test/Projects/app', surface: 'desktop', isInteractive: true })
+  await $.command.run({ command: 'ideas', args: '', ...RUN })
+  await $.command.run({ command: 'idea', args: '', ...RUN })
+  expect(disk.opened).toEqual(['idea', 'idea'])
+
+  const ui = await $.ui.mount({ plugin: 'idea-shell', surface: 'desktop', ...CAPTURE })
+  expect(await ui.find({ type: 'Text', text: '2 waiting in app' })).toBeDefined()
+  await ui.input({ key: 'idea', text: 'third' })
+  expect(disk.files.get(FILE)).toBe('- first\n- second\n- third\n')
+
+  await ui.press({ key: 'work-0' })
+  expect(disk.fills).toEqual(['first'])
+  expect(disk.closed).toEqual(['ideas', 'idea'])
+
+  await ui.press({ key: 'delete-0' })
+  await ui.press({ key: 'delete-0' })
+  expect(await ui.find({ type: 'Text', text: /No ideas yet/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -133,7 +173,7 @@ test('Claude lists ideas and removes one by number', async ($, on) => {
   expect(JSON.stringify(missing.result)).toContain('No idea number 5')
 })
 
-test('the footer shows the lightbulb only while ideas exist', async ($, on) => {
+test('the terminal footer counts the ideas; the desktop one is a bulb that opens the capture pane', async ($, on) => {
   const disk = fakeSession(on, { [FILE]: '- first\n- second\n' })
   await $.session.start({ cwd: '/Users/test/Projects/app', surface: 'terminal', isInteractive: true })
 
@@ -142,12 +182,14 @@ test('the footer shows the lightbulb only while ideas exist', async ($, on) => {
   await terminal.unmount()
 
   const desktop = await $.ui.mount({ plugin: 'idea-shell', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
-  expect(await desktop.find({ type: 'Text', text: '💡 2' })).toBeDefined()
+  expect(await desktop.find({ key: 'capture-idea', text: '💡 2' })).toBeDefined()
+  await desktop.press({ key: 'capture-idea' })
   await desktop.unmount()
+  expect(disk.opened.at(-1)).toBe('idea')
 
   disk.files.clear()
   await $.command.run({ command: 'ideas', args: '', ...RUN })
   const empty = await $.ui.mount({ plugin: 'idea-shell', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
-  expect(await empty.find({ type: 'Text', text: /💡/ })).toBeUndefined()
+  expect(await empty.find({ key: 'capture-idea', text: '💡' })).toBeDefined()
   await empty.unmount()
 })

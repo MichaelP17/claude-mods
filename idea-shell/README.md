@@ -9,6 +9,7 @@ Ideas belong to the folder Claude Code was started in. Every folder has its own 
 | `/idea <text>`, also while Claude is working | the idea is saved, a toast confirms it; Claude sees nothing |
 | `/idea` | a pane with one text field: Enter saves and empties it for the next idea, Shift+Enter adds a line in the terminal, Esc closes |
 | Ideas exist for this folder | `💡 3` in the footer under the prompt, terminal and desktop app |
+| Desktop app | `/idea`, `/ideas`, the `💡` in the footer and the hub open one Ideas pane: the field for a new idea above the waiting ideas, each with **Work on it** and **✕**; the footer and the hub open it at once, also while Claude is working |
 | `/ideas` | a pane listing the folder's ideas: pressing one puts it into the prompt and removes it from the list, **delete** drops it |
 | You ask Claude to work through the ideas | Claude reads them with its `ideas_list` tool and removes each with `idea_remove` once it is done |
 
@@ -22,12 +23,13 @@ One Markdown file per folder under `~/.claude/ideas/`, mirroring the folder's pa
 
 ## Details and limits
 
-- `/idea` runs immediately, even while a turn is in flight, and leaves no row in the conversation: neither the command nor the idea reaches Claude's context.
-- `/ideas` waits for the turn to end, since handing an idea to Claude only makes sense once it is free.
+- In the terminal, `/idea` and `/ideas` run at once, even while a turn is in flight, and leave no row in the conversation: neither the command nor the idea reaches Claude's context. A pressed idea only goes into the prompt box and reaches Claude when you send it.
+- The desktop app holds a slash command typed mid-turn until the turn ends, whatever the mod declares. The `💡` in the footer is the way in there while Claude works.
 - The folder is the one the session started in; a `cd` inside a shell command does not change it, `/cd` does. A subfolder or a worktree has a list of its own.
 - Every change re-reads the file first, so two sessions in the same folder do not overwrite each other's ideas.
 - The desktop app's text field is a single line: Shift+Enter saves there like Enter.
 - The mobile app draws no text field; `/idea <text>` works there.
+- With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the `💡` to its 🧰, whose Ideas row opens the Ideas pane.
 
 ## Uninstall
 

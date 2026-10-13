@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { TrackedMonitor } from '../types'
 import { REASON_PREFIX, parseTaskEnds, requestedLimits, takeReasonLine, takeReasonPrefix } from './limits'
 import type { Kind } from './limits'
+import type { HubCall, HubEntry } from './hub'
 
 const ALLOW_ONCE = 'Allow once'
 const ALLOW_SESSION = 'No limit this session'
@@ -14,6 +15,27 @@ const UNLIMITED = 1_000_000
 const monitors = atom({ plugin: 'concurrency-guard', key: 'monitors' } as const, [])
 const overrides = atom({ plugin: 'concurrency-guard', key: 'overrides' } as const, { subagents: null, monitors: null })
 const footer = atom({ plugin: 'concurrency-guard', key: 'footer' } as const, null)
+const isHubbed = atom({ plugin: 'concurrency-guard', key: 'isHubbed' } as const, false)
+
+let published: string | null = null
+
+// Without mod-hub the call throws, and the mod keeps its own footer label.
+async function publish($: EngineInterface, entry: HubEntry): Promise<void> {
+  const text = JSON.stringify(entry)
+  if (text === published) {
+    return
+  }
+  let isReached = true
+  try {
+    await ($ as unknown as HubCall).hub.set({ id: 'concurrency-guard', ...entry })
+  } catch {
+    isReached = false
+  }
+  published = isReached ? text : null
+  if ((await read($, isHubbed)) !== isReached) {
+    await update($, isHubbed, () => isReached)
+  }
+}
 
 const LABELS: Record<Kind, string> = { subagents: 'subagent', monitors: 'monitor' }
 const ICONS: Record<Kind, string> = { subagents: '🤖', monitors: '👁' }
@@ -75,6 +97,13 @@ async function refreshFooter($: EngineInterface): Promise<void> {
   if (label !== (await read($, footer))) {
     await update($, footer, () => label)
   }
+  await publish($, {
+    icon: '🤖',
+    title: 'Concurrency',
+    status: label ?? 'No subagents or monitors running',
+    attention: 'none',
+    actions: [],
+  })
 }
 
 // Under the limit the call runs untouched. At the limit it is refused once
@@ -126,6 +155,13 @@ export const register: Register = (on, options) => {
     subagents: Number(options.maxSubagents ?? 4),
     monitors: Number(options.maxMonitors ?? 3),
   }
+
+  on('session.start', async ($, e, next) => {
+    const result = await next(e)
+    await refreshFooter($)
+
+    return result
+  })
 
   on('prompt.submit', async ($, e, next) => {
     if (e.origin.kind === 'composer') {
@@ -265,6 +301,9 @@ export const register: Register = (on, options) => {
     }
     if (e.surface === 'terminal') {
       return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+    }
+    if (await read($, isHubbed)) {
+      return next(e)
     }
     const below = await next(e)
     const { Box, Text } = $.ui.resolve(e)

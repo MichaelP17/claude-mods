@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { CacheReading } from '../types'
-import { SHORT_TTL_MS, footerOf, formatTokens, isCold, isMilestoneCommand, learnTtl, remainingMs } from './cache'
+import { SHORT_TTL_MS, footerOf, formatTokens, hubStatusOf, isCold, isMilestoneCommand, learnTtl, remainingMs } from './cache'
 
 const HOUR = 60 * 60 * 1000
 const MINUTE = 60 * 1000
@@ -66,4 +66,11 @@ test('commits and test runs count as milestones', () => {
   expect(isMilestoneCommand('npm run test -- --watch=false')).toBe(true)
   expect(isMilestoneCommand('git status')).toBe(false)
   expect(isMilestoneCommand('cat test.txt')).toBe(false)
+})
+
+test('the hub status says where the cache stands, whatever the context size', async () => {
+  expect(hubStatusOf(readingAt(null), 0)).toBe('No request yet')
+  expect(hubStatusOf(readingAt(0, { contextTokens: 20_000 }), 18 * MINUTE)).toBe(`Warm for 42m · ${formatTokens(20_000)} context`)
+  expect(hubStatusOf(readingAt(0), 2 * HOUR)).toBe(`Cold · ${formatTokens(380_000)} context`)
+  expect(hubStatusOf(readingAt(0, { isRebuildPending: true }), MINUTE)).toBe('Rebuilt by the next request')
 })

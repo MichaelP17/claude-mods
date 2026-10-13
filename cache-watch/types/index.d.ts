@@ -17,6 +17,7 @@ declare module 'claude-code' {
       warnedFor: number | null
       footer: Footer | null
       isWorking: boolean
+      isHubbed: boolean
     }
   }
 }

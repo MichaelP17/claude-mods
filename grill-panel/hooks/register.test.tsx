@@ -130,7 +130,7 @@ test('a turn ending on a round opens the panel on the first question', async ($,
   await ui.unmount()
 
   const desktop = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
-  expect(await desktop.find({ type: 'Text', text: 'Question 1 of 3' })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: 'QUESTION 1 OF 3' })).toBeDefined()
   expect(await desktop.find({ type: 'Text', text: 'Answers' })).toBeDefined()
   expect(await desktop.find({ type: 'Markdown', text: 'The panel' })).toBeDefined()
   expect(await desktop.find({ key: 'accept-recommendation' })).toBeDefined()
@@ -174,7 +174,7 @@ test('on the desktop the steps jump to any question', async ($, on) => {
   expect(await ui.find({ key: 'goto-0', text: '✓ 1' })).toBeDefined()
 
   await ui.press({ key: 'goto-2' })
-  expect(await ui.find({ type: 'Text', text: 'Question 3 of 3' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'QUESTION 3 OF 3' })).toBeDefined()
   await ui.press({ key: 'goto-0' })
   expect(await ui.find({ key: 'answer', text: 'Panel' })).toBeDefined()
   await ui.unmount()
@@ -323,7 +323,7 @@ test('after a restart the conversation ending on the round picks up where it sto
 
   const desktop = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
   expect(await desktop.find({ key: 'goto-0', text: '✓ 1' })).toBeDefined()
-  expect(await desktop.find({ type: 'Text', text: 'Question 2 of 3' })).toBeDefined()
+  expect(await desktop.find({ type: 'Text', text: 'QUESTION 2 OF 3' })).toBeDefined()
   await desktop.unmount()
 })
 

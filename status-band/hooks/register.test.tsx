@@ -61,3 +61,31 @@ test('a footer another mod drew stays in front', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: '74%' })).toBeDefined()
   await ui.unmount()
 })
+
+test('a mod beneath that draws only a button gets no separator, one with text does', async ($, on) => {
+  let isButtonOnly = true
+  on('ui.render', { component: 'SessionMode' }, ($, e) => {
+    const { Box, Button, Text } = $.ui.resolve(e)
+
+    return (
+      <Box flexDirection="row">
+        <Button key="bulb" plain label="💡" onPress={() => undefined} />
+        {isButtonOnly ? null : <Text>⏳ 40m</Text>}
+      </Box>
+    )
+  })
+  fakeSession(on, ['desktop'], null)
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
+
+  const desktop = await $.ui.mount({ plugin: 'status-band', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
+  expect(await desktop.find({ key: 'bulb' })).toBeDefined()
+  expect((await desktop.findAll({ type: 'Text', text: /^ · $/ })).length).toBe(2)
+  expect(await desktop.find({ type: 'Text', text: '10%' })).toBeDefined()
+  await desktop.unmount()
+
+  isButtonOnly = false
+  const withText = await $.ui.mount({ plugin: 'status-band', surface: 'desktop', component: 'SessionMode', props: { modes: [] } })
+  expect(await withText.find({ type: 'Text', text: '⏳ 40m' })).toBeDefined()
+  expect((await withText.findAll({ type: 'Text', text: /^ · $/ })).length).toBe(3)
+  await withText.unmount()
+})

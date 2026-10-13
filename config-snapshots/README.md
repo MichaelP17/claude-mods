@@ -56,6 +56,8 @@ Inside Claude Code:
 | `/snapshots` | A pane with all snapshots; selecting one shows its diff, a button rolls back after a second confirming press |
 | `/rollback <name>` | Opens the pane on that snapshot |
 
+In the desktop app the pane also says whether the config changed since the last snapshot and has a field that takes a snapshot: what you type becomes its message, and the name is derived from it as on the command line. **Compare** shows the changed files in the snapshot's own card, **Show full diff** every changed line.
+
 At session start a toast reports when the config changed since the last snapshot. Changes under `ideas/`, which `idea-shell` writes, do not count on their own; they are recorded with the next snapshot.
 
 A rollback never rewrites history: it commits the current state first, then commits the restored one, so a rollback can itself be undone. It never uninstalls packages; it lists them and leaves the decision to you. `snapshot` and `rollback` push to `origin` when a remote is set; `CLAUDE_CONFIG_NO_PUSH=1` skips the push. Restart Claude Code after a rollback.
@@ -66,6 +68,7 @@ A rollback never rewrites history: it commits the current state first, then comm
 - `plugins/installed_plugins.json` contains absolute paths, so plugins are best installed per machine rather than shared across operating systems.
 - `lastUpdated` in `plugins/known_marketplaces.json` is not recorded, because Claude Code rewrites it on every background marketplace refresh. A rollback restores that file without the field.
 - Homebrew's auto-update is disabled while the script reads the inventory; otherwise taking a snapshot could migrate formulae.
+- With [`mod-hub`](../mod-hub/README.md) loaded, its 🧰 has a Config snapshots row that says whether the config changed since the last snapshot and opens the pane.
 
 ## Uninstall
 

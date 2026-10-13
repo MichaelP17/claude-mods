@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { ElementTable, EngineInterface, Register, RenderElement } from 'claude-code'
 
 import type { Question, Round, StoredRound } from '../types'
+import type { HubCall, HubEntry } from './hub'
 import {
   FORMAT_CONTRACT,
   answerCurrent,
@@ -25,6 +26,7 @@ import {
   roundKeyOf,
   skipCurrent,
 } from './rounds'
+import { ringSvg } from './look'
 
 const PANE = 'grill'
 const TITLE = 'Grill'
@@ -32,8 +34,41 @@ const STORE_PREFIX = 'round:'
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 const round = atom({ plugin: 'grill-panel', key: 'round' } as const, null)
+const isHubbed = atom({ plugin: 'grill-panel', key: 'isHubbed' } as const, false)
 
-type RemoteElements = Pick<ElementTable<'desktop'>, 'Box' | 'Button' | 'Input' | 'Markdown' | 'Text'>
+let published: string | null = null
+
+// Without mod-hub the call throws, and the mod keeps its own footer count.
+async function publish($: EngineInterface, entry: HubEntry): Promise<void> {
+  const text = JSON.stringify(entry)
+  if (text === published) {
+    return
+  }
+  let isReached = true
+  try {
+    await ($ as unknown as HubCall).hub.set({ id: 'grill-panel', ...entry })
+  } catch {
+    isReached = false
+  }
+  published = isReached ? text : null
+  if ((await read($, isHubbed)) !== isReached) {
+    await update($, isHubbed, () => isReached)
+  }
+}
+
+async function report($: EngineInterface): Promise<void> {
+  const current = await read($, round)
+  const total = current?.questions.length ?? 0
+  await publish($, {
+    icon: '🔥',
+    title: 'Grill',
+    status: current === null ? 'No open round' : `${total - openCount(current)} of ${total} answered`,
+    attention: current === null ? 'none' : 'info',
+    actions: [{ key: 'open', label: current === null ? 'Latest round' : 'Continue' }],
+  })
+}
+
+type RemoteElements = Pick<ElementTable<'desktop'>, 'Box' | 'Button' | 'Input' | 'Markdown' | 'Svg' | 'Text'>
 
 async function loadStored($: EngineInterface, key: string): Promise<StoredRound | undefined> {
   const value = await $.store.get(key)
@@ -90,6 +125,7 @@ async function begin($: EngineInterface, questions: readonly Question[], isReviv
   }
   const value = newRound(key, questions, stored?.answers ?? [])
   await update($, round, () => value)
+  await report($)
   if (stored?.status === 'done') {
     await save($, value, 'open')
   }
@@ -111,7 +147,22 @@ async function restore($: EngineInterface): Promise<void> {
 
 async function reset($: EngineInterface): Promise<void> {
   await update($, round, () => null)
+  await report($)
   await $.ui.close({ id: PANE })
+}
+
+async function openGrill($: EngineInterface): Promise<void> {
+  const current = await read($, round)
+  if (current === null) {
+    const messages = await $.session.messages()
+    const questions = latestRoundIn(messages)
+    if (questions.length === 0) {
+      $.ui.toast('No question round in this conversation.')
+      return
+    }
+    await begin($, questions, true)
+  }
+  await openPane($)
 }
 
 async function finish($: EngineInterface, value: Round): Promise<void> {
@@ -120,7 +171,10 @@ async function finish($: EngineInterface, value: Round): Promise<void> {
 }
 
 async function change($: EngineInterface, apply: (value: Round) => Round): Promise<Round | null> {
-  return update($, round, current => (current === null ? null : apply(current)))
+  const value = await update($, round, current => (current === null ? null : apply(current)))
+  await report($)
+
+  return value
 }
 
 async function submit($: EngineInterface, text: string): Promise<void> {
@@ -301,39 +355,51 @@ function drawRemote($: EngineInterface, ui: RemoteElements, value: Round): Rende
 }
 
 function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
-  const { Box, Button, Input, Markdown, Text } = ui
+  const { Box, Button, Input, Markdown, Svg, Text } = ui
   const question = value.questions[value.current]
   if (question === undefined) {
     return <Text dimColor>No open question round. /grill brings back the latest one.</Text>
   }
   const total = value.questions.length
+  const answered = total - openCount(value)
   const answer = value.answers[value.current] ?? null
   const choices = choicesOf(question.body)
   const recommended = recommendedLetterOf(question.recommendation)
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      <Box flexDirection="row" justifyContent="space-between">
-        <Text dimColor>{`Question ${value.current + 1} of ${total}`}</Text>
-        <Text dimColor>{`${total - openCount(value)} answered`}</Text>
+      <Box flexDirection="row" columnGap={2} alignItems="center">
+        <Svg source={ringSvg(answered, total)} alt={`${answered} of ${total} answered`} width={44} height={44} />
+        <Box flexDirection="column" flexShrink={1}>
+          <Text dimColor bold>{`QUESTION ${value.current + 1} OF ${total}`}</Text>
+          <Text bold>{question.title.length > 0 ? question.title : `Question ${question.number}`}</Text>
+        </Box>
       </Box>
       <Box flexDirection="row" columnGap={1} flexWrap="wrap">
         {value.questions.map((_, index) => drawStep($, ui, value, index))}
       </Box>
-      <Text bold>{question.title.length > 0 ? question.title : `Question ${question.number}`}</Text>
       {choices.lead.length > 0 && <Markdown text={choices.lead} />}
       {choices.options.length > 0 && (
         <Box flexDirection="column" rowGap={1}>
           {choices.options.map((choice, index) => (
-            <Box key={`choice-row-${index}`} flexDirection="row" columnGap={1} alignItems="flex-start">
+            <Box
+              key={`choice-row-${index}`}
+              flexDirection="row"
+              columnGap={2}
+              alignItems="center"
+              borderStyle="round"
+              {...(choice.letter === recommended ? { borderColor: 'claude' } : { borderDimColor: true })}
+              hover={{ borderColor: 'claude', borderDimColor: false }}
+              paddingX={1}
+            >
               <Button
                 key={`choice-${index}`}
                 label={choice.letter.toUpperCase()}
                 {...(choice.letter === recommended ? { variant: 'primary' as const } : {})}
                 onPress={() => submit($, choiceAnswerOf(choice))}
               />
-              <Box flexDirection="column" flexShrink={1}>
-                <Text hover={{ color: 'claude' }}>{choice.text}</Text>
+              <Box flexDirection="column" flexShrink={1} flexGrow={1}>
+                <Text>{choice.text}</Text>
                 {choice.letter === recommended && <Text color="claude">★ Recommended</Text>}
               </Box>
             </Box>
@@ -379,14 +445,19 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
 }
 
 function drawRemoteReview($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
-  const { Box, Button, Text } = ui
+  const { Box, Button, Svg, Text } = ui
   const total = value.questions.length
   const open = openCount(value)
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      <Text bold>{open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`}</Text>
-      <Text dimColor>Check the answers, then send them to Claude in one message.</Text>
+      <Box flexDirection="row" columnGap={2} alignItems="center">
+        <Svg source={ringSvg(total - open, total)} alt={`${total - open} of ${total} answered`} width={44} height={44} />
+        <Box flexDirection="column" flexShrink={1}>
+          <Text bold>{open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`}</Text>
+          <Text dimColor>Check the answers, then send them to Claude in one message.</Text>
+        </Box>
+      </Box>
       {value.questions.map((question, index) => {
         const answer = value.answers[index] ?? null
 
@@ -432,6 +503,7 @@ export const register: Register = on => {
     })
     await prune($)
     await restore($)
+    await report($)
 
     return next(e)
   })
@@ -470,19 +542,15 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'grill' }, async $ => {
-    const current = await read($, round)
-    if (current === null) {
-      const messages = await $.session.messages()
-      const questions = latestRoundIn(messages)
-      if (questions.length === 0) {
-        $.ui.toast('No question round in this conversation.')
-        return {}
-      }
-      await begin($, questions, true)
-    }
-    await openPane($)
+    await openGrill($)
 
     return {}
+  })
+
+  on('ui.press', { plugin: 'mod-hub', element: 'grill-panel:open' }, async ($, e, next) => {
+    await openGrill($)
+
+    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -492,13 +560,17 @@ export const register: Register = on => {
 
       return <Text dimColor>This app draws no text field; answer this round in the terminal or the desktop app.</Text>
     }
-    const elements = $.ui.resolve(e)
-    const { Box, Button, Input, Markdown, Text } = elements
+    if (e.surface !== 'terminal') {
+      const remote = $.ui.resolve(e)
+      if (value === null) {
+        return <remote.Text dimColor>No open question round. /grill brings back the latest one.</remote.Text>
+      }
+
+      return drawRemote($, remote, value)
+    }
+    const { Box, Button, Input, Markdown, Text } = $.ui.resolve(e)
     if (value === null) {
       return <Text dimColor>No open question round. /grill brings back the latest one.</Text>
-    }
-    if (e.surface !== 'terminal') {
-      return drawRemote($, elements, value)
     }
     const total = value.questions.length
     const open = openCount(value)
@@ -619,6 +691,9 @@ export const register: Register = on => {
     const label = footerOf(current)
     if (e.surface === 'terminal') {
       return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+    }
+    if (await read($, isHubbed)) {
+      return next(e)
     }
     const below = await next(e)
     const { Box, Text } = $.ui.resolve(e)

@@ -4,6 +4,7 @@ declare module 'claude-code' {
   interface PluginState {
     'idea-shell': {
       ideas: Idea[]
+      isHubbed: boolean
     }
   }
 }

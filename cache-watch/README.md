@@ -18,6 +18,8 @@ It only appears when there is something to decide: from `statusFromTokens` of co
 
 The timer starts over with every model request of the main conversation, including the steps Claude takes on its own between tool calls. Subagents have a cache of their own and do not count.
 
+With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the countdown to its 🧰: the Cache row always says how long the cache stays warm and how large the context is, the button turns yellow while it is about to expire, and **Compact now** appears between turns when compacting pays off.
+
 ## Suggestions
 
 From `largeContextTokens` of context on, a band above the prompt offers **Compact**, **Write handoff** and **Dismiss**:

@@ -29,6 +29,7 @@ declare module 'claude-code' {
   interface PluginState {
     'grill-panel': {
       round: Round | null
+      isHubbed: boolean
     }
   }
 }

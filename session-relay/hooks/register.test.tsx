@@ -157,7 +157,12 @@ test('a lead offers a fenced prompt from its answer and sends it to the worker',
   await $.turn.complete(turnOf(`Looks right.\n\n**Zum Einfügen:**\n\n\`\`\`\n${LONG}\n\`\`\`\n\n\`\`\`bash\nnode render.mjs\n\`\`\``))
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'session-relay', surface, ...BAND })
-    expect(await ui.find({ type: 'Text', text: /^Prompt for clued · 519 chars · Render the Zlatan clip/ })).toBeDefined()
+    if (surface === 'terminal') {
+      expect(await ui.find({ type: 'Text', text: /^Prompt for clued · 519 chars · Render the Zlatan clip/ })).toBeDefined()
+    } else {
+      expect(await ui.find({ type: 'Text', text: '⇄ Prompt for clued' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /^519 chars · Render the Zlatan clip/ })).toBeDefined()
+    }
     await ui.unmount()
   }
 
@@ -207,7 +212,7 @@ test('a worker takes a task into a fresh session as the user\'s prompt and repor
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'session-relay', surface, ...BAND })
-    expect(await ui.find({ type: 'Text', text: /^Task from the lead · for a fresh session/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^(⇄ )?Task from the lead · for a fresh session/ })).toBeDefined()
     await ui.unmount()
   }
 
@@ -275,7 +280,8 @@ test('a lead announces answers, notifies for new ones and attaches them to the n
   expect(await footerText($)).toBe('⇄ clued 📨 2')
 
   const ui = await $.ui.mount({ plugin: 'session-relay', surface: 'desktop', ...BAND })
-  expect(await ui.find({ type: 'Text', text: /^clued answered 2× · 16 chars · Handoff written\./ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '⇄ clued answered 2×' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^16 chars · Handoff written\./ })).toBeDefined()
   await ui.press({ key: 'attach' })
   expect(await footerText($)).toBe('⇄ clued 📎 2')
   expect(await ui.find({ type: 'Text', text: /go with your next prompt/ })).toBeDefined()

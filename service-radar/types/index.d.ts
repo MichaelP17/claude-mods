@@ -20,6 +20,7 @@ declare module 'claude-code' {
       services: Service[]
       isBusy: boolean
       message: string
+      isHubbed: boolean
     }
   }
 }

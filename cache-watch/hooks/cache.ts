@@ -93,6 +93,21 @@ export function footerOf(reading: CacheReading, now: number, visibility: Visibil
   return { label: `⏳ ${formatRemaining(remaining)}`, isExpiring }
 }
 
+// The hub always says where the cache stands, unlike the footer, which stays
+// quiet for a small context.
+export function hubStatusOf(reading: CacheReading, now: number): string {
+  const remaining = remainingMs(reading, now)
+  if (remaining === null) {
+    return 'No request yet'
+  }
+  if (reading.isRebuildPending) {
+    return 'Rebuilt by the next request'
+  }
+  const context = `${formatTokens(reading.contextTokens)} context`
+
+  return remaining === 0 ? `Cold · ${context}` : `Warm for ${formatRemaining(remaining)} · ${context}`
+}
+
 const COMMIT = /\bgit\s+(?:-C\s+\S+\s+)?commit\b/
 const TESTS = /\b(?:dotnet\s+test|(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test|pytest|go\s+test|cargo\s+test|vitest|jest|mvn\s+test|gradle\s+test|claude\s+plugin\s+test)\b/
 

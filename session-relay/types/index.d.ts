@@ -40,6 +40,7 @@ declare module 'claude-code' {
       presence: Presence | null
       isActive: boolean
       footer: string | null
+      isHubbed: boolean
     }
   }
 }

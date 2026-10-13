@@ -3,6 +3,8 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Service } from '../types'
 import { detectServices, isRunning, mayStopServices } from './detect'
+import type { HubCall, HubEntry } from './hub'
+import { TONES, dotSvg, spinnerSvg } from './look'
 
 const PANE = 'service-radar'
 const STORE_KEY = 'services'
@@ -14,6 +16,27 @@ const STOP_TIMEOUT_MS = 120_000
 const services = atom({ plugin: 'service-radar', key: 'services' } as const, [])
 const isBusy = atom({ plugin: 'service-radar', key: 'isBusy' } as const, false)
 const message = atom({ plugin: 'service-radar', key: 'message' } as const, '')
+const isHubbed = atom({ plugin: 'service-radar', key: 'isHubbed' } as const, false)
+
+let published: string | null = null
+
+// Without mod-hub the call throws, and the mod keeps its own footer count.
+async function publish($: EngineInterface, entry: HubEntry): Promise<void> {
+  const text = JSON.stringify(entry)
+  if (text === published) {
+    return
+  }
+  let isReached = true
+  try {
+    await ($ as unknown as HubCall).hub.set({ id: 'service-radar', ...entry })
+  } catch {
+    isReached = false
+  }
+  published = isReached ? text : null
+  if ((await read($, isHubbed)) !== isReached) {
+    await update($, isHubbed, () => isReached)
+  }
+}
 
 // Services outlive the session that started them, so the list lives in the
 // plugin's store; the state atom only mirrors it for drawing.
@@ -26,6 +49,17 @@ async function loadServices($: EngineInterface): Promise<Service[]> {
 async function saveServices($: EngineInterface, list: Service[]): Promise<void> {
   await $.store.set(STORE_KEY, list)
   await update($, services, () => list)
+  await report($, list)
+}
+
+async function report($: EngineInterface, list: readonly Service[]): Promise<void> {
+  await publish($, {
+    icon: '🐳',
+    title: 'Services',
+    status: list.length === 0 ? 'Nothing running' : `${list.length} running`,
+    attention: list.length === 0 ? 'none' : 'info',
+    actions: [{ key: 'open', label: 'Open' }],
+  })
 }
 
 // The desktop app starts sessions with launchd's bare PATH, which lacks
@@ -82,14 +116,24 @@ async function stillRunning($: EngineInterface, service: Service): Promise<boole
   }
 }
 
+// The pane opens on the list as stored; the checks then update it in place.
+async function openServices($: EngineInterface): Promise<void> {
+  await update($, message, () => '')
+  await $.ui.open({ id: PANE, title: 'Services', focus: true })
+  await refresh($)
+}
+
+// /services runs mid-turn, so a service Claude starts while the checks run must
+// survive: only the dead ones are dropped from the list as it is by then.
 async function refresh($: EngineInterface): Promise<Service[]> {
-  const list = await loadServices($)
-  const alive: Service[] = []
-  for (const service of list) {
-    if (await stillRunning($, service)) {
-      alive.push(service)
+  const dead = new Set<string>()
+  for (const service of await loadServices($)) {
+    if (!(await stillRunning($, service))) {
+      dead.add(service.id)
     }
   }
+  const current = await loadServices($)
+  const alive = current.filter(i => !dead.has(i.id))
   await saveServices($, alive)
 
   return alive
@@ -155,8 +199,10 @@ function clockTime(timestamp: number): string {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'services', description: 'Show the services Claude started and stop them' })
-    // Checking services can take seconds (a slow Docker daemon); startup must not wait for it.
+    await $.command.register({ name: 'services', description: 'Show the services Claude started and stop them', immediate: true })
+    // Checking services can take seconds (a slow Docker daemon); startup must not
+    // wait for it. Until then the hub shows the list as stored.
+    await report($, await loadServices($))
     void refresh($).then(alive => {
       if (alive.length > 0) {
         $.ui.toast(`${alive.length} service${alive.length === 1 ? '' : 's'} Claude started earlier still running. /services shows them.`)
@@ -191,11 +237,15 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'services' }, async $ => {
-    await refresh($)
-    await update($, message, () => '')
-    await $.ui.open({ id: PANE, title: 'Services', focus: true })
+    await openServices($)
 
     return {}
+  })
+
+  on('ui.press', { plugin: 'mod-hub', element: 'service-radar:open' }, async ($, e, next) => {
+    void openServices($)
+
+    return next(e)
   })
 
   // A /clear is the last moment to ask: on exit Claude Code allows no dialog,
@@ -229,6 +279,63 @@ export const register: Register = on => {
     const running = await read($, isBusy)
     const text = await read($, message)
     const home = await $.env.get('HOME')
+    if (e.surface !== 'terminal') {
+      const { Svg } = $.ui.resolve(e)
+
+      return (
+        <Box flexDirection="column" rowGap={1}>
+          <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+            <Box flexDirection="column">
+              <Text bold>🐳 Services</Text>
+              <Text dimColor>{list.length === 0 ? 'Nothing Claude started is running' : `${list.length} started by Claude, still running`}</Text>
+            </Box>
+            <Box flexDirection="row" columnGap={1} alignItems="center">
+              {running && <Svg source={spinnerSvg()} alt="working" width={14} height={14} isInteractive />}
+              <Button key="refresh" dimColor label="↻ Refresh" onPress={() => inBackground($, async () => `${(await refresh($)).length} running`)} />
+            </Box>
+          </Box>
+          {list.map(service => (
+            <Box
+              key={`card-${service.id}`}
+              flexDirection="row"
+              columnGap={2}
+              alignItems="center"
+              borderStyle="round"
+              borderDimColor
+              hover={{ borderColor: 'claude', borderDimColor: false }}
+              paddingX={1}
+            >
+              <Svg
+                source={dotSvg(service.check === null ? TONES.warning : TONES.success, service.check !== null)}
+                alt={service.check === null ? 'state unknown' : 'running'}
+                width={14}
+                height={14}
+                isInteractive
+              />
+              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                <Text bold>{service.label}</Text>
+                <Text dimColor>{`${shortPath(service.cwd, home)} · since ${clockTime(service.startedAt)}${service.check === null ? ' · not checkable' : ''}`}</Text>
+              </Box>
+              <Box flexDirection="row" columnGap={1}>
+                {service.check === null && <Button key={`forget-${service.id}`} dimColor label="Forget" onPress={() => forget($, service.id)} />}
+                <Button
+                  key={`stop-${service.id}`}
+                  hover={{ color: 'error' }}
+                  label="■ Stop"
+                  onPress={() => inBackground($, () => stopService($, service))}
+                />
+              </Box>
+            </Box>
+          ))}
+          {!running && text.length > 0 && <Text color="claude">{text}</Text>}
+          {list.length > 1 && (
+            <Box flexDirection="row">
+              <Button key="stop-all" hover={{ scope: 'stop-all', color: 'error' }} label="■ Stop all" onPress={() => inBackground($, () => stopAll($))} />
+            </Box>
+          )}
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column">
@@ -278,14 +385,19 @@ export const register: Register = on => {
     if (e.surface === 'terminal') {
       return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
     }
+    if (await read($, isHubbed)) {
+      return next(e)
+    }
     const below = await next(e)
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
     const rest = below.type !== 'engine' ? below : e.props.modes.length === 0 ? null : <Text dimColor>{e.props.modes.join(' & ')}</Text>
 
+    // A press reaches the mod at once; /services typed mid-turn waits in the
+    // desktop app until the turn ends. The desktop draws a footer's buttons
+    // ahead of its text, so the button takes no separator.
     return (
-      <Box flexDirection="row">
-        <Text dimColor>{label}</Text>
-        {rest !== null && <Text dimColor> · </Text>}
+      <Box flexDirection="row" alignItems="center">
+        <Button key="open-services" plain dimColor label={label} onPress={() => openServices($)} />
         {rest}
       </Box>
     )

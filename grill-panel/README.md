@@ -46,6 +46,7 @@ Each answer confirmed with Enter is saved at once in the mod's store under `~/.c
 - The desktop app's text field is a single line.
 - Typing an ordinary prompt while a round is open leaves the round alone, so you can ask Claude about a question before answering it. A new round from Claude replaces the old one.
 - Only Claude's final text of a turn is read, never a subagent's.
+- With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the `🔥` count to its 🧰, whose Grill row shows the answered questions and opens the panel, also while Claude is working.
 
 ## Uninstall
 

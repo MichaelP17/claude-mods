@@ -54,6 +54,7 @@ So it works between the terminal and the desktop app alike, and nothing is lost 
 - One worker and any number of leads per channel. A channel name is letters, digits, dots, dashes and underscores.
 - The notification goes through Claude Code's notification channel and is skipped where there is none; the toast always shows.
 - The mobile app draws no band; `/relay` opens the pane there.
+- With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the relay label to its 🧰, whose Relay row shows it and opens the pane.
 
 ## Configuration
 

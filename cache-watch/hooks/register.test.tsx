@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import type { Footer, Suggestion } from '../types'
 
@@ -25,6 +25,7 @@ const BAND = {
 
 test('the suggestion keeps a band drawn beneath it visible on every surface', async ($, on) => {
   seedSuggestion(on, { kind: 'milestone', contextTokens: 400_000 })
+  mock.clock(on)
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
 
@@ -42,6 +43,7 @@ test('the suggestion keeps a band drawn beneath it visible on every surface', as
 
 test('the suggestion draws alone when nothing is beneath', async ($, on) => {
   seedSuggestion(on, { kind: 'expiring', contextTokens: 400_000 })
+  mock.clock(on)
   on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 0 }))
 
   const ui = await $.ui.mount({ plugin: 'cache-watch', surface: 'desktop', ...BAND })
