@@ -305,10 +305,16 @@ export function findMachineChanges(fullCommand: string): Finding[] {
 
 export type ProjectRule = { match: string; reason: string }
 
-export type ProjectConfig = { block: ProjectRule[]; ask: ProjectRule[] }
+export type ProjectConfig = { block: ProjectRule[]; ask: ProjectRule[]; allow: ProjectRule[] }
 
 export function findProjectMatches(command: string, rules: readonly ProjectRule[]): ProjectRule[] {
   const segments = splitSegments(command)
 
   return rules.filter(rule => segments.some(segment => new RegExp(rule.match).test(segment)))
+}
+
+// An allow rule waives a built-in finding only for the part it matches, so a
+// chained command still asks about every other part.
+export function withoutAllowed(findings: readonly Finding[], rules: readonly ProjectRule[]): Finding[] {
+  return findings.filter(finding => !rules.some(rule => new RegExp(rule.match).test(finding.segment)))
 }

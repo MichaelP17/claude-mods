@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 
-import { findMachineChanges, findProjectMatches } from './rules'
+import { findMachineChanges, findProjectMatches, withoutAllowed } from './rules'
 import type { ProjectConfig } from './rules'
 
 const ALLOW = 'Allow once'
@@ -10,16 +10,16 @@ const PROJECT_CONFIG_PATH = '.claude/machine-guard.json'
 async function readProjectConfig($: EngineInterface): Promise<ProjectConfig> {
   const path = `${await $.session.cwd()}/${PROJECT_CONFIG_PATH}`
   if (!(await $.fs.exists(path))) {
-    return { block: [], ask: [] }
+    return { block: [], ask: [], allow: [] }
   }
   try {
     const parsed = JSON.parse(await $.fs.read(path)) as Partial<ProjectConfig>
 
-    return { block: parsed.block ?? [], ask: parsed.ask ?? [] }
+    return { block: parsed.block ?? [], ask: parsed.ask ?? [], allow: parsed.allow ?? [] }
   } catch {
     $.ui.log(`machine-guard: ${PROJECT_CONFIG_PATH} is not valid JSON and is ignored.`)
 
-    return { block: [], ask: [] }
+    return { block: [], ask: [], allow: [] }
   }
 }
 
@@ -32,7 +32,7 @@ export const register: Register = on => {
       return { deny: `Blocked in this project by ${PROJECT_CONFIG_PATH}: ${blocked.reason}` }
     }
 
-    const machineReasons = [...new Set(findMachineChanges(e.command).map(i => i.reason))]
+        const machineReasons = [...new Set(withoutAllowed(findMachineChanges(e.command), config.allow).map(i => i.reason))]
     const projectReasons = [...new Set(findProjectMatches(e.command, config.ask).map(i => i.reason))]
     if (machineReasons.length === 0 && projectReasons.length === 0) {
       return next(e)
