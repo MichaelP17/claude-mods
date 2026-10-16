@@ -151,12 +151,23 @@ test('on the desktop the choices of a question are buttons, the recommended one 
   await $.turn.complete({ ...TURN, answer })
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
   expect(await ui.find({ type: 'Markdown', text: 'What is tomorrow?' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'A day off' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'Recommended' })).toBeDefined()
+  expect(await ui.find({ key: 'choice-1', text: /A day off/ })).toBeDefined()
+  const recommended = await ui.find({ key: 'choice-0' })
+  expect(recommended?.text).toContain('★ Recommended')
+  expect(recommended?.props).toMatchObject({ variant: 'primary', autoFocus: true })
+  expect(await ui.find({ key: 'accept-recommendation' })).toBeUndefined()
 
   await ui.press({ key: 'choice-1' })
   expect(await ui.find({ type: 'Text', text: 'Focus' })).toBeDefined()
   expect(await ui.find({ key: 'choice-0' })).toBeUndefined()
+  expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
+
+  await ui.press({ key: 'goto-0' })
+  expect((await ui.find({ key: 'choice-1' }))?.text).toContain('✓ Chosen')
+  expect((await ui.find({ key: 'choice-0' }))?.props.variant).toBeUndefined()
+  expect(await ui.find({ key: 'answer-0', text: '' })).toBeDefined()
+  expect((await ui.find({ key: 'choice-1' }))?.props.autoFocus).toBe(true)
+  await ui.press({ key: 'goto-1' })
 
   await ui.press({ key: 'accept-recommendation' })
   expect(await ui.find({ type: 'Text', text: 'All questions answered' })).toBeDefined()
@@ -170,13 +181,49 @@ test('on the desktop the steps jump to any question', async ($, on) => {
   await $.session.start(START)
   await $.turn.complete(TURN)
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
-  await ui.input({ key: 'answer', text: 'Panel' })
+  await ui.input({ key: 'answer-0', text: 'Panel' })
   expect(await ui.find({ key: 'goto-0', text: '✓ 1' })).toBeDefined()
 
   await ui.press({ key: 'goto-2' })
   expect(await ui.find({ type: 'Text', text: 'QUESTION 3 OF 3' })).toBeDefined()
   await ui.press({ key: 'goto-0' })
-  expect(await ui.find({ key: 'answer', text: 'Panel' })).toBeDefined()
+  expect(await ui.find({ key: 'answer-0', text: 'Panel' })).toBeDefined()
+  expect((await ui.find({ key: 'answer-0' }))?.props.autoFocus).toBe(true)
+  await ui.unmount()
+})
+
+test('on the desktop a saved answer leaves the next question with an empty field and the recommendation in focus', async ($, on) => {
+  fakeEngine(on)
+  await $.session.start(START)
+  await $.turn.complete(TURN)
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
+  expect((await ui.find({ key: 'answer-0' }))?.props.autoFocus).toBeUndefined()
+
+  await ui.input({ key: 'answer-0', text: 'Panel', kind: 'change' })
+  await ui.input({ key: 'answer-0', text: 'Panel' })
+  expect(await ui.find({ key: 'answer-0' })).toBeUndefined()
+  expect((await ui.find({ key: 'answer-1' }))?.props.value).toBe('')
+  expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
+  await ui.unmount()
+})
+
+test('on the desktop a long answer is shown wrapped beneath the field until it is saved', async ($, on) => {
+  fakeEngine(on)
+  await $.session.start(START)
+  await $.turn.complete(TURN)
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  const long = 'In the panel, docked on the right, because the conversation stays readable beside it.'
+  await ui.input({ key: 'answer-0', text: 'In the panel', kind: 'change' })
+  expect(await ui.find({ key: 'preview' })).toBeUndefined()
+
+  await ui.input({ key: 'answer-0', text: long, kind: 'change' })
+  expect(await ui.find({ key: 'preview', text: long })).toBeDefined()
+
+  await ui.input({ key: 'answer-0', text: long })
+  expect(await ui.find({ key: 'preview' })).toBeUndefined()
+  await ui.press({ key: 'goto-0' })
+  expect(await ui.find({ key: 'preview', text: long })).toBeDefined()
   await ui.unmount()
 })
 
@@ -280,7 +327,7 @@ test('sending early asks first and marks open questions', async ($, on) => {
   await $.session.start(START)
   await $.turn.complete(TURN)
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
-  await ui.input({ key: 'answer', text: 'Panel' })
+  await ui.input({ key: 'answer-0', text: 'Panel' })
 
   await ui.press({ key: 'send' })
   expect(await ui.find({ type: 'Text', text: /2 of 3 questions are unanswered/ })).toBeDefined()

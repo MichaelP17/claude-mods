@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import {
   answerCurrent,
   choiceAnswerOf,
+  choicePartsOf,
   choicesOf,
   editAt,
   formatAnswers,
@@ -163,6 +164,7 @@ test('choices written inline or one per line are split off the question', async 
       { letter: 'b', text: 'A day off' },
       { letter: 'c', text: 'Mixed, e.g. half and half' },
     ],
+    trail: '',
   })
   expect(choicesOf('Pick one:\n- (a) Panel\n- (b) Prompt box')).toEqual({
     lead: 'Pick one:',
@@ -170,10 +172,28 @@ test('choices written inline or one per line are split off the question', async 
       { letter: 'a', text: 'Panel' },
       { letter: 'b', text: 'Prompt box' },
     ],
+    trail: '',
   })
-  expect(choicesOf('Only (a) one choice')).toEqual({ lead: 'Only (a) one choice', options: [] })
+  expect(choicesOf('Who uses it?\n(a) only you,\n(b) a team,\n  with roles\n(c) everyone.\nThat decides the login.')).toEqual({
+    lead: 'Who uses it?',
+    options: [
+      { letter: 'a', text: 'only you' },
+      { letter: 'b', text: 'a team, with roles' },
+      { letter: 'c', text: 'everyone.' },
+    ],
+    trail: 'That decides the login.',
+  })
+  expect(choicesOf('Only (a) one choice')).toEqual({ lead: 'Only (a) one choice', options: [], trail: '' })
   expect(choicesOf('See (b) first, then (a) Panel (b) Prompt').options.map(i => i.letter)).toEqual(['a', 'b'])
   expect(choiceAnswerOf({ letter: 'b', text: 'A day off' })).toBe('(b) A day off')
+})
+
+test('a choice opening in bold keeps that part as its heading', async () => {
+  expect(choicePartsOf({ letter: 'a', text: '**Card instead of wizard.** It shows the `source` medium.' })).toEqual({
+    head: 'Card instead of wizard',
+    rest: 'It shows the source medium.',
+  })
+  expect(choicePartsOf({ letter: 'b', text: 'The normal **wizard**' })).toEqual({ head: '', rest: 'The normal wizard' })
 })
 
 test('a recommendation that opens with a choice names it', async () => {

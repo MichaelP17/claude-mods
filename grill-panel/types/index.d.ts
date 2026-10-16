@@ -19,6 +19,11 @@ export type Round = {
   prefill: string | null
 }
 
+export type Draft = {
+  field: string
+  text: string
+}
+
 export type StoredRound = {
   status: 'open' | 'done'
   answers: (Answer | null)[]
@@ -29,6 +34,7 @@ declare module 'claude-code' {
   interface PluginState {
     'grill-panel': {
       round: Round | null
+      draft: Draft | null
       isHubbed: boolean
     }
   }

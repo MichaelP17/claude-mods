@@ -1,13 +1,14 @@
 import { atom, read, update } from 'claude-code'
-import type { ElementTable, EngineInterface, Register, RenderElement } from 'claude-code'
+import type { ElementTable, EngineInterface, Register, RenderElement, RenderSurface } from 'claude-code'
 
-import type { Question, Round, StoredRound } from '../types'
+import type { Draft, Question, Round, StoredRound } from '../types'
 import type { HubCall, HubEntry } from './hub'
 import {
   FORMAT_CONTRACT,
   answerCurrent,
   answerOf,
   choiceAnswerOf,
+  choicePartsOf,
   choicesOf,
   editAt,
   footerOf,
@@ -26,6 +27,7 @@ import {
   roundKeyOf,
   skipCurrent,
 } from './rounds'
+import type { Choice } from './rounds'
 import { ringSvg } from './look'
 
 const PANE = 'grill'
@@ -33,7 +35,12 @@ const TITLE = 'Grill'
 const STORE_PREFIX = 'round:'
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
+// The desktop's field is a single line, so a longer answer scrolls out of
+// sight; from this length on it is shown wrapped beneath the field.
+const PREVIEW_LENGTH = 50
+
 const round = atom({ plugin: 'grill-panel', key: 'round' } as const, null)
+const draft = atom({ plugin: 'grill-panel', key: 'draft' } as const, null)
 const isHubbed = atom({ plugin: 'grill-panel', key: 'isHubbed' } as const, false)
 
 let published: string | null = null
@@ -110,6 +117,65 @@ async function focus($: EngineInterface, key: string): Promise<void> {
   await $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
 }
 
+// One field per question: a field kept across questions keeps the text typed
+// into it, since the value it is drawn with stays empty from one to the next.
+function fieldOf(value: Round): string {
+  return `answer-${value.current}`
+}
+
+function chosenOf(value: Round, options: readonly Choice[]): number {
+  const answer = value.answers[value.current] ?? null
+
+  return answer?.kind === 'text' ? options.findIndex(i => choiceAnswerOf(i) === answer.text) : -1
+}
+
+function recommendedOf(question: Question, options: readonly Choice[]): number {
+  const letter = recommendedLetterOf(question.recommendation)
+
+  return options.findIndex(i => i.letter === letter)
+}
+
+// Where the desktop's ring starts on a question, so Enter alone takes what the
+// panel suggests: the answer given before, else the recommendation.
+function startOf(value: Round): string {
+  const question = value.questions[value.current]
+  if (value.mode === 'review') {
+    return 'send'
+  }
+  if (question === undefined || value.prefill !== null) {
+    return fieldOf(value)
+  }
+  const { options } = choicesOf(question.body)
+  const chosen = chosenOf(value, options)
+  if (chosen !== -1) {
+    return `choice-${chosen}`
+  }
+  if (value.answers[value.current]?.kind === 'text') {
+    return fieldOf(value)
+  }
+  const recommended = recommendedOf(question, options)
+  if (recommended !== -1) {
+    return `choice-${recommended}`
+  }
+  if (question.recommendation !== null) {
+    return 'accept-recommendation'
+  }
+
+  return options.length > 0 ? 'choice-0' : fieldOf(value)
+}
+
+// The terminal keeps its one field, so the ring stays on it there.
+async function focusStart($: EngineInterface, value: Round | null, surface: RenderSurface): Promise<void> {
+  if (value === null) {
+    return
+  }
+  if (surface === 'terminal') {
+    await focus($, value.mode === 'review' ? 'send' : 'answer')
+    return
+  }
+  await focus($, startOf(value))
+}
+
 // A round already sent or discarded stays closed unless the person asks for it
 // again with /grill (`isRevived`).
 async function begin($: EngineInterface, questions: readonly Question[], isRevived: boolean): Promise<boolean> {
@@ -172,12 +238,15 @@ async function finish($: EngineInterface, value: Round): Promise<void> {
 
 async function change($: EngineInterface, apply: (value: Round) => Round): Promise<Round | null> {
   const value = await update($, round, current => (current === null ? null : apply(current)))
+  if ((await read($, draft)) !== null) {
+    await update($, draft, () => null)
+  }
   await report($)
 
   return value
 }
 
-async function submit($: EngineInterface, text: string): Promise<void> {
+async function submit($: EngineInterface, text: string, surface: RenderSurface): Promise<void> {
   const before = await read($, round)
   const question = before?.questions[before.current]
   if (before?.mode !== 'answer' || question === undefined) {
@@ -192,29 +261,24 @@ async function submit($: EngineInterface, text: string): Promise<void> {
     return
   }
   await save($, value, 'open')
-  if (value.mode === 'review') {
-    await focus($, 'send')
-  }
+  await focusStart($, value, surface)
 }
 
-async function skip($: EngineInterface): Promise<void> {
-  const value = await change($, skipCurrent)
-  await focus($, value?.mode === 'review' ? 'send' : 'answer')
+async function skip($: EngineInterface, surface: RenderSurface): Promise<void> {
+  await focusStart($, await change($, skipCurrent), surface)
 }
 
-async function back($: EngineInterface): Promise<void> {
-  await change($, goBack)
-  await focus($, 'answer')
+async function back($: EngineInterface, surface: RenderSurface): Promise<void> {
+  await focusStart($, await change($, goBack), surface)
 }
 
-async function edit($: EngineInterface, index: number): Promise<void> {
-  await change($, current => editAt(current, index))
-  await focus($, 'answer')
+async function edit($: EngineInterface, index: number, surface: RenderSurface): Promise<void> {
+  await focusStart($, await change($, current => editAt(current, index)), surface)
 }
 
-async function useRecommendation($: EngineInterface): Promise<void> {
-  await change($, prefillRecommendation)
-  await focus($, 'answer')
+async function useRecommendation($: EngineInterface, surface: RenderSurface): Promise<void> {
+  const value = await change($, prefillRecommendation)
+  await focusStart($, value, surface)
 }
 
 async function requestSend($: EngineInterface): Promise<void> {
@@ -258,9 +322,8 @@ async function discard($: EngineInterface): Promise<void> {
   }
 }
 
-async function cancel($: EngineInterface): Promise<void> {
-  const value = await change($, resume)
-  await focus($, value?.mode === 'review' ? 'send' : 'answer')
+async function cancel($: EngineInterface, surface: RenderSurface): Promise<void> {
+  await focusStart($, await change($, resume), surface)
 }
 
 function markOf(value: Round, index: number): string {
@@ -284,13 +347,13 @@ const DISCARD_HOVER = { scope: 'discard', color: 'error', dimColor: false } as c
 function drawStep($: EngineInterface, ui: RemoteElements, value: Round, index: number): RenderElement {
   const { Button, Text } = ui
   const number = String(index + 1)
-  const press = () => edit($, index)
+  const press = (surface: RenderSurface) => edit($, index, surface)
   if (index === value.current) {
-    return <Button key={`goto-${index}`} variant="primary" label={number} onPress={press} />
+    return <Button key={`goto-${index}`} variant="primary" label={number} onPress={e => press(e.surface)} />
   }
   if (value.answers[index] !== null) {
     return (
-      <Button key={`goto-${index}`} onPress={press}>
+      <Button key={`goto-${index}`} dimColor onPress={e => press(e.surface)}>
         <Text color="success">✓</Text>
         {` ${number}`}
       </Button>
@@ -298,19 +361,71 @@ function drawStep($: EngineInterface, ui: RemoteElements, value: Round, index: n
   }
   if (value.skipped[index] === true) {
     return (
-      <Button key={`goto-${index}`} onPress={press}>
+      <Button key={`goto-${index}`} dimColor onPress={e => press(e.surface)}>
         <Text color="warning">↷</Text>
         {` ${number}`}
       </Button>
     )
   }
 
-  return <Button key={`goto-${index}`} label={number} onPress={press} />
+  return <Button key={`goto-${index}`} dimColor label={number} onPress={e => press(e.surface)} />
+}
+
+function drawHeader(ui: RemoteElements, eyebrow: string, title: string, done: number, total: number): RenderElement {
+  const { Box, Svg, Text } = ui
+
+  return (
+    <Box flexDirection="row" columnGap={2} alignItems="center">
+      <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+        <Text bold color="claude">
+          {eyebrow}
+        </Text>
+        <Text bold>{title}</Text>
+      </Box>
+      <Svg source={ringSvg(done, total)} alt={`${done} of ${total} answered`} width={44} height={44} />
+    </Box>
+  )
+}
+
+// A Button holds strings and Text only, so the parts are gathered without the
+// `false` a conditional in JSX would leave among them. On the filled primary
+// button an accent color would vanish, so its parts keep the button's own.
+function drawChoice($: EngineInterface, ui: RemoteElements, choice: Choice, index: number, state: { isRecommended: boolean; isChosen: boolean; isPrimary: boolean; isStart: boolean }): RenderElement {
+  const { Box, Button, Text } = ui
+  const { head, rest } = choicePartsOf(choice)
+  const tone = (color: 'success' | 'claude') => (state.isPrimary ? {} : { color })
+  const parts: (string | RenderElement)[] = [
+    <Text bold {...tone(state.isChosen ? 'success' : 'claude')}>{`${choice.letter.toUpperCase()}   `}</Text>,
+    head.length > 0 ? <Text bold>{head}</Text> : rest,
+  ]
+  if (state.isChosen) {
+    parts.push(<Text {...tone('success')}>{'   ✓ Chosen'}</Text>)
+  } else if (state.isRecommended) {
+    parts.push(<Text {...tone('claude')}>{'   ★ Recommended'}</Text>)
+  }
+
+  return (
+    <Box key={`choice-row-${index}`} flexDirection="column" alignItems="stretch" rowGap={0}>
+      <Button
+        key={`choice-${index}`}
+        {...(state.isPrimary ? { variant: 'primary' as const } : {})}
+        {...(state.isStart ? { autoFocus: true as const } : {})}
+        onPress={e => submit($, choiceAnswerOf(choice), e.surface)}
+      >
+        {parts}
+      </Button>
+      {head.length > 0 && rest.length > 0 && (
+        <Box paddingX={2}>
+          <Text dimColor>{rest}</Text>
+        </Box>
+      )}
+    </Box>
+  )
 }
 
 // The desktop and the editor draw native controls and borders, so the terminal's
 // glyph lists and key hints give way to steps, cards and buttons there.
-function drawRemote($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
+function drawRemote($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null): RenderElement {
   const { Box, Button, Text } = ui
   const total = value.questions.length
   const open = openCount(value)
@@ -321,12 +436,12 @@ function drawRemote($: EngineInterface, ui: RemoteElements, value: Round): Rende
 
   if (value.mode === 'confirm-send') {
     return (
-      <Box flexDirection="column" rowGap={1} borderStyle="round" borderColor="warning" paddingX={1}>
+      <Box flexDirection="column" rowGap={1} borderStyle="round" borderColor="warning" paddingX={2}>
         <Text bold>Send with open questions?</Text>
         <Text>{`${open} of ${total} questions are unanswered and go out as "(unanswered)".`}</Text>
         <Box flexDirection="row" columnGap={1}>
           <Button key="confirm-send" variant="primary" autoFocus label="➤ Send anyway" onPress={() => send($)} />
-          <Button key="cancel" label="✎ Keep answering" onPress={() => cancel($)} />
+          <Button key="cancel" label="✎ Keep answering" onPress={e => cancel($, e.surface)} />
         </Box>
       </Box>
     )
@@ -334,11 +449,11 @@ function drawRemote($: EngineInterface, ui: RemoteElements, value: Round): Rende
 
   if (value.mode === 'confirm-discard') {
     return (
-      <Box flexDirection="column" rowGap={1} borderStyle="round" borderColor="error" paddingX={1}>
+      <Box flexDirection="column" rowGap={1} borderStyle="round" borderColor="error" paddingX={2}>
         <Text bold>Discard this round?</Text>
         <Text>The panel stops offering it; /grill brings it back with its answers.</Text>
         <Box flexDirection="row" columnGap={1}>
-          <Button key="cancel" variant="primary" autoFocus label="Keep round" onPress={() => cancel($)} />
+          <Button key="cancel" variant="primary" autoFocus label="Keep round" onPress={e => cancel($, e.surface)} />
           <Button key="confirm-discard" onPress={() => discard($)}>
             <Text color="error">✕ Discard</Text>
           </Button>
@@ -351,90 +466,96 @@ function drawRemote($: EngineInterface, ui: RemoteElements, value: Round): Rende
     return drawRemoteReview($, ui, value)
   }
 
-  return drawRemoteQuestion($, ui, value)
+  return drawRemoteQuestion($, ui, value, typed)
 }
 
-function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
-  const { Box, Button, Input, Markdown, Svg, Text } = ui
+function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null): RenderElement {
+  const { Box, Button, Input, Markdown, Text } = ui
   const question = value.questions[value.current]
   if (question === undefined) {
     return <Text dimColor>No open question round. /grill brings back the latest one.</Text>
   }
   const total = value.questions.length
-  const answered = total - openCount(value)
   const answer = value.answers[value.current] ?? null
   const choices = choicesOf(question.body)
-  const recommended = recommendedLetterOf(question.recommendation)
+  const recommended = recommendedOf(question, choices.options)
+  const chosen = chosenOf(value, choices.options)
+  const start = startOf(value)
+  const field = fieldOf(value)
+  const fieldValue = value.prefill ?? (answer?.kind === 'text' && chosen === -1 ? answer.text : '')
+  const shown = typed?.field === field ? typed.text : fieldValue
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      <Box flexDirection="row" columnGap={2} alignItems="center">
-        <Svg source={ringSvg(answered, total)} alt={`${answered} of ${total} answered`} width={44} height={44} />
-        <Box flexDirection="column" flexShrink={1}>
-          <Text dimColor bold>{`QUESTION ${value.current + 1} OF ${total}`}</Text>
-          <Text bold>{question.title.length > 0 ? question.title : `Question ${question.number}`}</Text>
-        </Box>
-      </Box>
+      {drawHeader(
+        ui,
+        `QUESTION ${value.current + 1} OF ${total}`,
+        question.title.length > 0 ? question.title : `Question ${question.number}`,
+        total - openCount(value),
+        total,
+      )}
       <Box flexDirection="row" columnGap={1} flexWrap="wrap">
         {value.questions.map((_, index) => drawStep($, ui, value, index))}
       </Box>
       {choices.lead.length > 0 && <Markdown text={choices.lead} />}
       {choices.options.length > 0 && (
         <Box flexDirection="column" rowGap={1}>
-          {choices.options.map((choice, index) => (
-            <Box
-              key={`choice-row-${index}`}
-              flexDirection="row"
-              columnGap={2}
-              alignItems="center"
-              borderStyle="round"
-              {...(choice.letter === recommended ? { borderColor: 'claude' } : { borderDimColor: true })}
-              hover={{ borderColor: 'claude', borderDimColor: false }}
-              paddingX={1}
-            >
-              <Button
-                key={`choice-${index}`}
-                label={choice.letter.toUpperCase()}
-                {...(choice.letter === recommended ? { variant: 'primary' as const } : {})}
-                onPress={() => submit($, choiceAnswerOf(choice))}
-              />
-              <Box flexDirection="column" flexShrink={1} flexGrow={1}>
-                <Text>{choice.text}</Text>
-                {choice.letter === recommended && <Text color="claude">★ Recommended</Text>}
-              </Box>
-            </Box>
-          ))}
+          {choices.options.map((choice, index) =>
+            drawChoice($, ui, choice, index, {
+              isRecommended: index === recommended,
+              isChosen: index === chosen,
+              isPrimary: index === (chosen === -1 ? recommended : chosen),
+              isStart: start === `choice-${index}`,
+            }),
+          )}
         </Box>
       )}
+      {choices.trail.length > 0 && <Markdown text={choices.trail} />}
       {question.recommendation !== null && (
-        <Box flexDirection="column" borderStyle="round" borderColor="claude" paddingX={1}>
+        <Box key="recommendation" flexDirection="column" rowGap={0} borderStyle="round" borderColor="claude" paddingX={2}>
           <Text bold color="claude">
-            Recommendation
+            ★ RECOMMENDATION
           </Text>
           <Markdown text={question.recommendation} />
-          <Box flexDirection="row" columnGap={1} marginTop={1}>
-            <Button key="accept-recommendation" onPress={() => submit($, '')}>
-              <Text color="success">✓</Text>
-              {answer?.kind === 'recommendation' ? ' Accepted' : ' Accept'}
-            </Button>
-            <Button key="edit-recommendation" label="✎ Edit before saving" onPress={() => useRecommendation($)} />
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            {recommended === -1 && (
+              <Button
+                key="accept-recommendation"
+                variant="primary"
+                {...(start === 'accept-recommendation' ? { autoFocus: true as const } : {})}
+                label={answer?.kind === 'recommendation' ? '✓ Accepted' : '✓ Accept'}
+                onPress={e => submit($, '', e.surface)}
+              />
+            )}
+            <Button key="edit-recommendation" label="✎ Edit before saving" onPress={e => useRecommendation($, e.surface)} />
           </Box>
         </Box>
       )}
-      <Box flexDirection="column" alignItems="stretch">
+      <Box flexDirection="column" alignItems="stretch" rowGap={0}>
+        <Text bold dimColor>
+          {choices.options.length > 0 ? 'OR YOUR OWN ANSWER' : 'YOUR ANSWER'}
+        </Text>
         <Input
-          key="answer"
-          value={value.prefill ?? (answer?.kind === 'text' ? answer.text : '')}
-          placeholder={choices.options.length > 0 ? 'Or your own answer' : 'Your answer'}
+          key={field}
+          value={fieldValue}
+          placeholder="Type your answer, Enter saves it"
           submitLabel="Save"
-          autoFocus
-          onSubmit={text => {
-            void submit($, text)
+          {...(start === field ? { autoFocus: true as const } : {})}
+          onInput={text => {
+            void update($, draft, () => ({ field, text }))
+          }}
+          onSubmit={(text, e) => {
+            void submit($, text, e.surface)
           }}
         />
+        {shown.length > PREVIEW_LENGTH && (
+          <Box key="preview" flexDirection="column" borderStyle="round" borderDimColor paddingX={2}>
+            <Text>{shown}</Text>
+          </Box>
+        )}
       </Box>
       <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap" columnGap={1}>
-        <Button key="skip" label="↷ Skip for now" onPress={() => skip($)} />
+        <Button key="skip" dimColor label="↷ Skip for now" onPress={e => skip($, e.surface)} />
         <Box flexDirection="row" columnGap={1}>
           <Button key="send" dimColor label="➤ Send now…" onPress={() => requestSend($)} />
           <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard" onPress={() => requestDiscard($)} />
@@ -445,48 +566,47 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
 }
 
 function drawRemoteReview($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
-  const { Box, Button, Svg, Text } = ui
+  const { Box, Button, Text } = ui
   const total = value.questions.length
   const open = openCount(value)
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      <Box flexDirection="row" columnGap={2} alignItems="center">
-        <Svg source={ringSvg(total - open, total)} alt={`${total - open} of ${total} answered`} width={44} height={44} />
-        <Box flexDirection="column" flexShrink={1}>
-          <Text bold>{open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`}</Text>
-          <Text dimColor>Check the answers, then send them to Claude in one message.</Text>
-        </Box>
-      </Box>
-      {value.questions.map((question, index) => {
-        const answer = value.answers[index] ?? null
+      {drawHeader(ui, 'REVIEW', open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`, total - open, total)}
+      <Text dimColor>Check the answers, then send them to Claude in one message.</Text>
+      <Box flexDirection="column" rowGap={1}>
+        {value.questions.map((question, index) => {
+          const answer = value.answers[index] ?? null
 
-        return (
-          <Box
-            key={`card-${index}`}
-            flexDirection="row"
-            columnGap={1}
-            alignItems="center"
-            borderStyle="round"
-            {...(answer === null ? { borderColor: 'warning' } : { borderDimColor: true })}
-            hover={{ borderColor: 'claude', borderDimColor: false }}
-            paddingX={1}
-          >
-            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-              <Text dimColor>{question.title.length > 0 ? `${index + 1} · ${question.title}` : `Question ${index + 1}`}</Text>
-              {answer === null ? (
-                <Text color="warning">Unanswered</Text>
-              ) : answer.kind === 'recommendation' ? (
-                <Text color="claude">★ Recommendation accepted</Text>
-              ) : (
-                <Text>{answer.text}</Text>
-              )}
+          return (
+            <Box
+              key={`card-${index}`}
+              flexDirection="row"
+              columnGap={1}
+              alignItems="center"
+              borderStyle="round"
+              {...(answer === null ? { borderColor: 'warning' } : { borderDimColor: true })}
+              hover={{ borderColor: 'claude', borderDimColor: false }}
+              paddingX={2}
+            >
+              <Box flexDirection="column" flexGrow={1} flexShrink={1} rowGap={0}>
+                <Text bold dimColor>
+                  {question.title.length > 0 ? `${index + 1} · ${question.title}` : `Question ${index + 1}`}
+                </Text>
+                {answer === null ? (
+                  <Text color="warning">Unanswered</Text>
+                ) : answer.kind === 'recommendation' ? (
+                  <Text color="claude">★ Recommendation accepted</Text>
+                ) : (
+                  <Text>{answer.text}</Text>
+                )}
+              </Box>
+              <Button key={`edit-${index}`} dimColor hover={{ dimColor: false, color: 'claude' }} label="✎ Edit" onPress={e => edit($, index, e.surface)} />
             </Box>
-            <Button key={`edit-${index}`} dimColor hover={{ dimColor: false, color: 'claude' }} label="✎ Edit" onPress={() => edit($, index)} />
-          </Box>
-        )
-      })}
-      <Box flexDirection="row" justifyContent="space-between">
+          )
+        })}
+      </Box>
+      <Box flexDirection="row" justifyContent="space-between" alignItems="center">
         <Button key="send" variant="primary" autoFocus label="➤ Send to Claude" onPress={() => requestSend($)} />
         <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard round" onPress={() => requestDiscard($)} />
       </Box>
@@ -566,7 +686,7 @@ export const register: Register = on => {
         return <remote.Text dimColor>No open question round. /grill brings back the latest one.</remote.Text>
       }
 
-      return drawRemote($, remote, value)
+      return drawRemote($, remote, value, await read($, draft))
     }
     const { Box, Button, Input, Markdown, Text } = $.ui.resolve(e)
     if (value === null) {
@@ -585,7 +705,7 @@ export const register: Register = on => {
           <Text>{`${open} of ${total} questions are unanswered and go out as "(unanswered)".`}</Text>
           <Box flexDirection="row" columnGap={2} marginTop={1}>
             <Button key="confirm-send" variant="primary" autoFocus label="Send anyway" onPress={() => send($)} />
-            <Button key="cancel" label="Keep answering" onPress={() => cancel($)} />
+            <Button key="cancel" label="Keep answering" onPress={e => cancel($, e.surface)} />
           </Box>
         </Box>
       )
@@ -596,7 +716,7 @@ export const register: Register = on => {
         <Box flexDirection="column">
           <Text>Discard this round? The panel stops offering it; /grill brings it back with its answers.</Text>
           <Box flexDirection="row" columnGap={2} marginTop={1}>
-            <Button key="cancel" autoFocus label="Keep round" onPress={() => cancel($)} />
+            <Button key="cancel" autoFocus label="Keep round" onPress={e => cancel($, e.surface)} />
             <Button key="confirm-discard" label="Discard" onPress={() => discard($)} />
           </Box>
         </Box>
@@ -612,7 +732,7 @@ export const register: Register = on => {
               key={`edit-${index}`}
               plain
               {...(index < 9 ? { hotkey: String(index + 1) } : {})}
-              onPress={() => edit($, index)}
+              onPress={e => edit($, index, e.surface)}
             >
               {`${headingOf(question)}: `}
               <Text dimColor>{previewOf(value.answers[index] ?? null)}</Text>
@@ -654,7 +774,7 @@ export const register: Register = on => {
         {question.recommendation !== null && <Markdown dimColor text={`➡️ ${question.recommendation}`} />}
         <Box flexDirection="column" marginTop={1}>
           {previous !== undefined && (
-            <Button key="back" plain dimColor label={`◀ ${headingOf(previous)}`} onPress={() => back($)} />
+            <Button key="back" plain dimColor label={`◀ ${headingOf(previous)}`} onPress={e => back($, e.surface)} />
           )}
           <Input
             key="answer"
@@ -662,14 +782,14 @@ export const register: Register = on => {
             placeholder={placeholder}
             submitLabel="save"
             autoFocus
-            onSubmit={text => {
-              void submit($, text)
+            onSubmit={(text, e) => {
+              void submit($, text, e.surface)
             }}
           />
           <Box flexDirection="row" columnGap={2} flexWrap="wrap">
-            <Button key="skip" label="Skip ▶" onPress={() => skip($)} />
+            <Button key="skip" label="Skip ▶" onPress={e => skip($, e.surface)} />
             {question.recommendation !== null && (
-              <Button key="edit-recommendation" label="Edit recommendation" onPress={() => useRecommendation($)} />
+              <Button key="edit-recommendation" label="Edit recommendation" onPress={e => useRecommendation($, e.surface)} />
             )}
             <Button key="send" label="Send…" onPress={() => requestSend($)} />
             <Button key="discard" dimColor label="Discard round" onPress={() => requestDiscard($)} />

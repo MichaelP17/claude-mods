@@ -19,9 +19,11 @@ The table describes the terminal. The desktop app and VS Code draw the same flow
 
 | Where | What you see |
 | --- | --- |
-| above the question | `Question 2 of 5` and a numbered button per question (`✓` once answered); a click jumps there |
-| choices written as `(a) … (b) …` | one row per choice with a letter button that saves it as the answer (`Q1: (b) A day off`); the choice the recommendation opens with is marked *Recommended* |
-| the recommendation | a framed card with **Accept** and **Edit before saving** |
+| above the question | `Question 2 of 5`, a progress ring, and a numbered button per question (`✓` once answered); a click jumps there |
+| choices written as `(a) … (b) …` | one button per choice, the whole row clickable, that saves it as the answer (`Q1: (b) A day off`); the choice the recommendation opens with is marked *Recommended*, the one already picked *Chosen* |
+| the recommendation | a framed card with **Accept** (left out when a choice carries it) and **Edit before saving** |
+| where the focus starts | on the recommended choice, else on **Accept**, else on the field, so Enter alone takes the recommendation; Tab and the arrow keys move on, and a question answered before starts on its answer |
+| the field | a new, empty field per question; Enter saves; past 50 characters the answer is repeated wrapped beneath it |
 | below the field | **Skip for now**, and dimmed **Send now…** and **Discard** |
 | the review | one card per question with its full answer and **Edit**; open questions are framed in the warning color |
 
@@ -43,7 +45,7 @@ Each answer confirmed with Enter is saved at once in the mod's store under `~/.c
 
 - The panel opens by itself as a side pane when the terminal runs fullscreen and is at least 144 columns wide (110 once you opened it yourself with `/grill`); otherwise a toast points to `/grill`, which opens it at any width. The desktop app always opens it as a side pane.
 - It takes the keyboard when it opens only while the prompt box is empty; otherwise click into the field.
-- The desktop app's text field is a single line.
+- The desktop app's text field is a single line: Enter saves, and there is no Shift+Enter for a new line. The wrapped copy beneath it keeps a long answer readable.
 - Typing an ordinary prompt while a round is open leaves the round alone, so you can ask Claude about a question before answering it. A new round from Claude replaces the old one.
 - Only Claude's final text of a turn is read, never a subagent's.
 - With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the `🔥` count to its 🧰, whose Grill row shows the answered questions and opens the panel, also while Claude is working.

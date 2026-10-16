@@ -300,15 +300,18 @@ export function previewOf(answer: Answer | null, length = 60): string {
 
 export type Choice = { letter: string; text: string }
 
-export type Choices = { lead: string; options: Choice[] }
+export type Choices = { lead: string; options: Choice[]; trail: string }
 
 const CHOICE_MARK = /(^|\s)\(([a-z])\)\s+/gu
 const CHOICE_EDGE = /[\s,;\-–—•*]+$/u
 const RECOMMENDED_CHOICE = /^[\s*_]*\(([a-z])\)/u
+const LINE_START = /\n(?=\S)/u
+const BOLD_HEAD = /^\*\*(.+?)\*\*[\s:.\-–—]*/u
 
 // Models list the choices inline as "(a) … (b) …" as often as one per line.
 // Only a run starting at (a) with the letters in order counts, so a stray
-// "(b)" in the question text is left where it is.
+// "(b)" in the question text is left where it is. The last choice ends with
+// its line (indented lines continue it), so a closing paragraph stays apart.
 export function choicesOf(body: string): Choices {
   const marks: { start: number; end: number; letter: string }[] = []
   for (const match of body.matchAll(CHOICE_MARK)) {
@@ -318,20 +321,38 @@ export function choicesOf(body: string): Choices {
     }
   }
   const first = marks[0]
-  if (first === undefined || marks.length < 2) {
-    return { lead: body, options: [] }
+  const last = marks.at(-1)
+  if (first === undefined || last === undefined || marks.length < 2) {
+    return { lead: body, options: [], trail: '' }
   }
+  const lineEnd = body.slice(last.end).search(LINE_START)
+  const end = lineEnd === -1 ? body.length : last.end + lineEnd
 
   return {
     lead: body.slice(0, first.start).replace(CHOICE_EDGE, ''),
     options: marks.map((mark, index) => ({
       letter: mark.letter,
       text: body
-        .slice(mark.end, marks[index + 1]?.start ?? body.length)
+        .slice(mark.end, marks[index + 1]?.start ?? end)
         .replace(CHOICE_EDGE, '')
         .replace(/\s+/gu, ' '),
     })),
+    trail: body.slice(end).trim(),
   }
+}
+
+// A button draws plain text, so a choice opening in bold ("**Card.** It shows
+// …") keeps that part as its heading and loses the remaining markers.
+export function choicePartsOf(choice: Choice): { head: string; rest: string } {
+  const match = BOLD_HEAD.exec(choice.text)
+  const head = match?.[1] ?? ''
+  const rest = match === null ? choice.text : choice.text.slice(match[0].length)
+
+  return { head: plainOf(head).replace(/[.:]$/u, ''), rest: plainOf(rest) }
+}
+
+function plainOf(text: string): string {
+  return text.replace(/\*\*|__|`/gu, '').trim()
 }
 
 export function recommendedLetterOf(recommendation: string | null): string | null {
