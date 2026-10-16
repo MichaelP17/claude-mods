@@ -205,10 +205,15 @@ export function resume(round: Round): Round {
 
 // A lone letter for a question with choices stands for that choice, so Claude
 // reads "(b) A day off" rather than a bare "b".
+export function choiceOf(text: string, question: Question): Choice | undefined {
+  const letter = LETTER_ANSWER.exec(text.trim())?.[1]?.toLowerCase()
+
+  return letter === undefined ? undefined : choicesOf(question.body).options.find(i => i.letter === letter)
+}
+
 export function answerOf(text: string, question: Question): Answer | null {
   const normalized = text.replace(/\r\n?/g, '\n').trim()
-  const letter = LETTER_ANSWER.exec(normalized)?.[1]?.toLowerCase()
-  const choice = letter === undefined ? undefined : choicesOf(question.body).options.find(i => i.letter === letter)
+  const choice = choiceOf(normalized, question)
   if (choice !== undefined) {
     return { kind: 'text', text: choiceAnswerOf(choice) }
   }

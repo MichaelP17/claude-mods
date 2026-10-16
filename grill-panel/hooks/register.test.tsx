@@ -60,7 +60,15 @@ async function footerText($: Engine): Promise<string | undefined> {
   return label?.text
 }
 
-async function headerOf(ui: { find: (query: ElementQuery) => Promise<FoundElement | undefined> }): Promise<unknown> {
+type Drawn = { find: (query: ElementQuery) => Promise<FoundElement | undefined>; findAll: (query: ElementQuery) => Promise<FoundElement[]> }
+
+async function altsOf(ui: Drawn): Promise<string[]> {
+  const cards = await ui.findAll({ type: 'Svg' })
+
+  return cards.map(i => String(i.props.alt))
+}
+
+async function headerOf(ui: Drawn): Promise<unknown> {
   const card = await ui.find({ type: 'Svg' })
 
   return card?.props.alt
@@ -137,13 +145,13 @@ test('a turn ending on a round opens the panel on the first question', async ($,
 
   const desktop = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
   expect(await headerOf(desktop)).toBe('QUESTION 1 OF 3: Answers, 0/3 answered')
-  expect(await desktop.find({ type: 'Markdown', text: 'The panel' })).toBeDefined()
+  expect(await altsOf(desktop)).toContain('Recommendation: The panel')
   expect(await desktop.find({ key: 'accept-recommendation' })).toBeDefined()
   expect(await desktop.find({ type: 'Text', text: /Shift\+Tab/ })).toBeUndefined()
   await desktop.unmount()
 })
 
-test('on the desktop the choices stay in the question text and a typed letter picks one', async ($, on) => {
+test('on the desktop the choices are tiles in the question card and a typed letter picks one', async ($, on) => {
   const world = fakeEngine(on)
   await $.session.start(START)
   const answer = [
@@ -155,17 +163,18 @@ test('on the desktop the choices stay in the question text and a typed letter pi
   ].join('\n')
   await $.turn.complete({ ...TURN, answer })
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
-  expect(await ui.find({ type: 'Markdown', text: 'What is tomorrow? (a) A work day (b) A day off (c) Mixed' })).toBeDefined()
+  expect(await altsOf(ui)).toContain('What is tomorrow? (a) A work day (b) A day off (c) Mixed')
   expect(await ui.find({ key: 'choice-0' })).toBeUndefined()
   expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
-  expect((await ui.find({ key: 'answer-0' }))?.props.placeholder).toBe('A letter or your own answer, Enter saves it')
+  expect((await ui.find({ key: 'answer-0' }))?.props.placeholder).toBe('A letter, or your own answer · Enter saves')
 
   await ui.input({ key: 'answer-0', text: 'b' })
   expect(await headerOf(ui)).toBe('QUESTION 2 OF 2: Focus, 1/2 answered')
   expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
 
   await ui.press({ key: 'goto-0' })
-  expect(await ui.find({ key: 'answer-0', text: '(b) A day off' })).toBeDefined()
+  expect(await ui.find({ key: 'answer-0', text: 'b' })).toBeDefined()
+  expect(await altsOf(ui)).toContain('Saves choice b: A day off')
   expect((await ui.find({ key: 'answer-0' }))?.props.autoFocus).toBe(true)
   await ui.press({ key: 'goto-1' })
 
@@ -215,15 +224,16 @@ test('on the desktop a long answer is shown wrapped beneath the field until it i
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
   const long = 'In the panel, docked on the right, because the conversation stays readable beside it.'
   await ui.input({ key: 'answer-0', text: 'In the panel', kind: 'change' })
-  expect(await ui.find({ key: 'preview' })).toBeUndefined()
+  const previews = async () => (await altsOf(ui)).filter(i => i.startsWith('Your answer'))
+  expect(await previews()).toEqual([])
 
   await ui.input({ key: 'answer-0', text: long, kind: 'change' })
-  expect(await ui.find({ key: 'preview', text: long })).toBeDefined()
+  expect(await previews()).toEqual([`Your answer: ${long}`])
 
   await ui.input({ key: 'answer-0', text: long })
-  expect(await ui.find({ key: 'preview' })).toBeUndefined()
+  expect(await previews()).toEqual([])
   await ui.press({ key: 'goto-0' })
-  expect(await ui.find({ key: 'preview', text: long })).toBeDefined()
+  expect(await previews()).toEqual([`Your answer: ${long}`])
   await ui.unmount()
 })
 
@@ -261,7 +271,7 @@ test('answering every question, the last by taking the recommendation, sends Q l
     if (surface === 'terminal') {
       expect(await ui.find({ key: 'edit-2', text: /recommendation accepted/ })).toBeDefined()
     } else {
-      expect(await ui.find({ type: 'Text', text: 'Recommendation accepted' })).toBeDefined()
+      expect(await altsOf(ui)).toContain('3 · Push: recommendation accepted')
       expect(await ui.find({ key: 'edit-2' })).toBeDefined()
     }
     await ui.unmount()
@@ -334,7 +344,7 @@ test('sending early asks first and marks open questions', async ($, on) => {
   await ui.input({ key: 'answer-0', text: 'Panel' })
 
   await ui.press({ key: 'send' })
-  expect(await ui.find({ type: 'Text', text: /2 of 3 questions are unanswered/ })).toBeDefined()
+  expect((await altsOf(ui)).some(i => i.includes('2 of 3 questions are unanswered'))).toBe(true)
   await ui.press({ key: 'cancel' })
   expect(await headerOf(ui)).toMatch(/^QUESTION 2 OF 3: Name/)
 

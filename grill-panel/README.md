@@ -16,18 +16,20 @@ Answers Claude's question rounds one question at a time. When Claude ends a turn
 | **Discard round** | asks first, then closes the round for good; `/grill` brings it back |
 | Esc, or the pane's close mark | the panel closes, the answers stay; `/grill` reopens it |
 
-The table describes the terminal. The desktop app and VS Code draw the same flow with their own controls:
+The table describes the terminal. The desktop app and VS Code draw the same flow as cards — pictures drawn by the mod, in the light or dark color scheme — with native controls beneath them:
 
 | Where | What you see |
 | --- | --- |
-| above the question | a card with `Question 2 of 5`, the title and one bar segment per question: green answered, amber skipped, the current one pulsing in the accent color; it follows the light or dark color scheme |
-| below the card | a numbered button per question (`✓` once answered); a click jumps there |
-| choices written as `(a) … (b) …` | they stay in the question text as Claude wrote them; a letter alone in the field picks one, as in the terminal |
-| the recommendation | a framed card with **Accept** and **Edit before saving** |
-| where the focus starts | on **Accept**, so Enter alone takes the recommendation; on the field when the question has no recommendation or was answered in text before |
-| the field | a new, empty field per question; Enter saves; past 50 characters the answer is repeated wrapped beneath it |
+| the header card | `Question 2 of 5`, the title and one bar segment per question: green answered, amber skipped, the current one pulsing in the accent color |
+| below it | a numbered button per question (`✓` once answered); a click jumps there |
+| the question card | the question's text with its Markdown (bold, code, lists, quotes, code blocks); choices written as `(a) … (b) …` become lettered tiles, the recommended one framed in the accent color, the one you picked in green |
+| the recommendation card | the recommendation, with the choice it names; green once accepted. Beneath it **Accept recommendation** and **Edit before saving** |
+| where the focus starts | on **Accept recommendation**, so Enter alone takes it; on the field when the question has no recommendation or was answered in text before |
+| the field | a new field per question; Enter saves. A letter alone (`b`) saves that choice, and a card beneath the field names it before you press Enter; past 50 characters the answer is shown wrapped in that card |
 | below the field | **Skip for now**, and dimmed **Send now…** and **Discard** |
-| the review | one card per question with its full answer and **Edit**; open questions are framed in the warning color |
+| the review | one card per question with its answer, open ones in the warning color, and a row of **✎** buttons to change any of them |
+
+The cards cannot measure their text, so line breaks are estimated a little on the safe side, and a link shows its text without being clickable.
 
 The answers reach Claude as one message of yours. Until you send, nothing you type in the panel reaches Claude.
 
@@ -47,7 +49,7 @@ Each answer confirmed with Enter is saved at once in the mod's store under `~/.c
 
 - The panel opens by itself as a side pane when the terminal runs fullscreen and is at least 144 columns wide (110 once you opened it yourself with `/grill`); otherwise a toast points to `/grill`, which opens it at any width. The desktop app always opens it as a side pane.
 - It takes the keyboard when it opens only while the prompt box is empty; otherwise click into the field.
-- The desktop app's text field is a single line: Enter saves, and there is no Shift+Enter for a new line. The wrapped copy beneath it keeps a long answer readable.
+- The desktop app's text field is a single line: Enter saves, and there is no Shift+Enter for a new line. The card beneath it keeps a long answer readable.
 - Typing an ordinary prompt while a round is open leaves the round alone, so you can ask Claude about a question before answering it. A new round from Claude replaces the old one.
 - Only Claude's final text of a turn is read, never a subagent's.
 - With [`mod-hub`](../mod-hub/README.md) loaded, the desktop footer leaves the `🔥` count to its 🧰, whose Grill row shows the answered questions and opens the panel, also while Claude is working.
