@@ -3,7 +3,9 @@ import type { EngineInterface, Register, RenderElement, Timer } from 'claude-cod
 
 import type { Answer, Link, Presence, Task } from '../types'
 import type { HubCall, HubEntry } from './hub'
-import { TONES, dotSvg } from './look'
+import { headerCard, messageCards } from './look'
+import type { Card } from './look'
+import { cardWidthOf } from './svg'
 import {
   USAGE,
   channelOf,
@@ -868,35 +870,36 @@ export const register: Register = (on, options) => {
     const task = (await read($, tasks)).at(-1)
     const isEmpty = current.role === 'lead' ? block === undefined && items.length === 0 : task === undefined
     if (e.surface !== 'terminal') {
-      const ui = $.ui.resolve(e)
-      const Svg = 'Svg' in ui ? ui.Svg : null
+      const { Svg } = $.ui.resolve(e)
+      const width = cardWidthOf(e.props.bodyColumns)
       const now = await $.clock.now()
       const held = await read($, presence)
       const active = await read($, isActive)
-      const dot =
+      const state =
         current.role === 'worker'
-          ? { color: active ? TONES.success : TONES.neutral, isPulsing: active, alt: active ? 'this session is the worker' : 'another session is the worker' }
+          ? active
+            ? 'this session works'
+            : 'another session works'
           : !isOnline(held, now)
-            ? { color: TONES.neutral, isPulsing: false, alt: 'no worker open' }
+            ? 'no worker open'
             : held.busySince !== null
-              ? { color: TONES.warning, isPulsing: true, alt: 'worker busy' }
-              : { color: TONES.success, isPulsing: false, alt: 'worker ready' }
+              ? 'worker busy'
+              : 'worker ready'
       const detail = status.split(' · ').slice(1).join(' · ')
-      const card = { flexDirection: 'column', rowGap: 1, borderStyle: 'round', paddingX: 1 } as const
+      const header = headerCard({
+        width,
+        eyebrow: `⇄ RELAY · ${current.role === 'lead' ? 'LEAD' : 'WORKER'}`,
+        title: current.channel,
+        counter: detail.length > 0 ? detail : state,
+      })
+      const drawCards = (list: readonly Card[]) => list.map(card => <Svg source={card.source} alt={card.alt} width={width} height={card.height} />)
 
       return (
         <Box flexDirection="column" rowGap={1}>
-          <Box flexDirection="row" columnGap={2} alignItems="center">
-            {Svg !== null && <Svg source={dotSvg(dot.color, dot.isPulsing)} alt={dot.alt} width={14} height={14} isInteractive />}
-            <Box flexDirection="column" flexShrink={1}>
-              <Text bold>{`⇄ ${current.channel}`}</Text>
-              <Text dimColor>{`${current.role === 'lead' ? 'Lead' : 'Worker'}${detail.length > 0 ? ` · ${detail}` : ''}`}</Text>
-            </Box>
-          </Box>
+          {drawCards([header])}
           {current.role === 'lead' && block !== undefined && (
-            <Box key="offer" {...card} borderColor="claude">
-              <Text bold>{`Prompt for ${current.channel} · ${formatChars(block.length)}`}</Text>
-              <Markdown text={block} />
+            <Box key="offer" flexDirection="column" rowGap={1}>
+              {drawCards(messageCards(width, `PROMPT FOR ${current.channel.toUpperCase()} · ${formatChars(block.length)}`, block, 'card-accent'))}
               <Box flexDirection="row" columnGap={1} flexWrap="wrap">
                 <Button key="pane-send" label="➤ Send" variant="primary" onPress={() => sendTask($, block, false)} />
                 <Button key="pane-send-fresh" label="✦ Send as fresh session" onPress={() => sendTask($, block, true)} />
@@ -905,9 +908,8 @@ export const register: Register = (on, options) => {
           )}
           {current.role === 'lead' &&
             items.map((answer, index) => (
-              <Box key={`answer-${answer.id}`} {...card} borderDimColor>
-                <Text bold>{`Answer ${index + 1} of ${items.length} · ${formatChars(answer.text.length)}`}</Text>
-                <Markdown text={answer.text} />
+              <Box key={`answer-${answer.id}`} flexDirection="column">
+                {drawCards(messageCards(width, `ANSWER ${index + 1} OF ${items.length} · ${formatChars(answer.text.length)}`, answer.text, 'card'))}
               </Box>
             ))}
           {current.role === 'lead' && items.length > 0 && (
@@ -918,9 +920,10 @@ export const register: Register = (on, options) => {
             </Box>
           )}
           {current.role === 'worker' && task !== undefined && (
-            <Box key="task" {...card} borderColor="claude">
-              <Text bold>{`Task from the lead · ${formatChars(task.text.length)}${task.isFresh ? ' · for a fresh session' : ''}`}</Text>
-              <Markdown text={task.text} />
+            <Box key="task" flexDirection="column" rowGap={1}>
+              {drawCards(
+                messageCards(width, `TASK FROM THE LEAD · ${formatChars(task.text.length)}${task.isFresh ? ' · FOR A FRESH SESSION' : ''}`, task.text, 'card-accent'),
+              )}
               <Box flexDirection="row" columnGap={1} flexWrap="wrap">
                 <Button key="pane-clear-send" label="✦ Clear & send" {...(task.isFresh ? { variant: 'primary' as const } : {})} onPress={() => takeTask($, task, true)} />
                 <Button key="pane-send-here" label="➤ Send here" {...(task.isFresh ? {} : { variant: 'primary' as const })} onPress={() => takeTask($, task, false)} />
@@ -929,7 +932,7 @@ export const register: Register = (on, options) => {
             </Box>
           )}
           {isEmpty && (
-            <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+            <Box flexDirection="column">
               <Text dimColor>Nothing pending.</Text>
               <Text dimColor>{USAGE}</Text>
             </Box>

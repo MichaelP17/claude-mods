@@ -1,7 +1,7 @@
 import type { Answer, Question } from '../types'
 import { choiceAnswerOf, choicesOf, recommendedLetterOf } from './rounds'
 import type { Choice } from './rounds'
-import { EYEBROW, LINE, PAD, SIZE, blockSections, cards, escape, eyebrowSvg, eyebrowWidth, fitText, frame, parseBlocks, parseInline, plainOf, svgDocument, textSection, textWidth } from './svg'
+import { LINE, PAD, SIZE, blockSections, cards, escape, eyebrowSection, eyebrowSvg, eyebrowWidth, fitText, frame, parseBlocks, parseInline, plainOf, svgDocument, textSection, textWidth } from './svg'
 import type { Card, Section, Variant } from './svg'
 
 export { headerCard, noticeCard } from './svg'
@@ -74,17 +74,10 @@ export function questionCards(width: number, question: Question, answer: Answer 
   return cards(width, 'card', sections, plainOf(question.body.replace(/\s+/gu, ' ')))
 }
 
-function headSection(left: string, right: string | null, rightTone: string, width: number): Section {
-  return {
-    height: EYEBROW + 10,
-    draw: y => eyebrowSvg(left, PAD, y + EYEBROW) + (right === null ? '' : eyebrowSvg(right, width - PAD, y + EYEBROW, rightTone, 'end')),
-  }
-}
-
 export function recommendationCards(width: number, recommendation: string, isAccepted: boolean): Card[] {
   const letter = recommendedLetterOf(recommendation)
   const sections = [
-    headSection(letter === null ? '★ RECOMMENDATION' : `★ RECOMMENDATION · CHOICE ${letter.toUpperCase()}`, isAccepted ? '✓ ACCEPTED' : null, 'success', width),
+    eyebrowSection(letter === null ? '★ RECOMMENDATION' : `★ RECOMMENDATION · CHOICE ${letter.toUpperCase()}`, isAccepted ? '✓ ACCEPTED' : null, 'success', width),
     ...blockSections(parseBlocks(recommendation), PAD, width - 2 * PAD),
   ]
 
@@ -94,7 +87,7 @@ export function recommendationCards(width: number, recommendation: string, isAcc
 // What Enter will save, wrapped: the field itself is one line, and a typed
 // letter shows the choice it stands for.
 export function previewCard(width: number, text: string, choice: Choice | undefined): Card[] {
-  const head = headSection(
+  const head = eyebrowSection(
     choice === undefined ? 'YOUR ANSWER' : `SAVES CHOICE ${choice.letter.toUpperCase()}`,
     choice === undefined ? `${Array.from(text).length} CHARACTERS` : 'ENTER',
     'muted',
