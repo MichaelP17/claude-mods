@@ -17,11 +17,13 @@ import {
   remainingMs,
 } from './cache'
 import type { HubCall, HubEntry } from './hub'
-import { TONES, ringSvg } from './look'
+import { buttonWidthOf, cacheBandCard } from './look'
 
 const COMPACT_FIRST = 'Compact first'
 const SEND_AS_IS = 'Send as is'
 const EXPIRING_COLOR = '#d4a017'
+
+const BAND_LABELS = ['Compact', 'Write handoff', 'Dismiss']
 
 const BAND_TEXT = {
   expiring: { title: '⏳ Cache expires soon', hint: 'compacting now is cheaper than after it expires' },
@@ -340,30 +342,23 @@ export const register: Register = (on, options) => {
       const now = await $.clock.now()
       const cache = await read($, reading)
       const remaining = remainingMs(cache, now) ?? 0
-      const color = current.kind === 'expiring' ? TONES.warning : TONES.accent
+      const width = Math.max(240, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 8))
+      const card = cacheBandCard(width, {
+        isExpiring: current.kind === 'expiring',
+        title: text.title,
+        hint: `${formatTokens(current.contextTokens)} context · ${text.hint}`,
+        ring: remaining === 0 ? 'cold' : formatRemaining(remaining),
+        remainingMs: remaining,
+        ttlMs: cache.ttlMs,
+        reserve: buttonWidthOf(BAND_LABELS),
+      })
 
+      // The buttons lie over the card's right edge: the picture takes no presses.
       return (
         <Box flexDirection="column">
-          <Box
-            key="cache-band"
-            flexDirection="row"
-            columnGap={2}
-            alignItems="center"
-            borderStyle="round"
-            borderColor={current.kind === 'expiring' ? 'warning' : 'claude'}
-            paddingX={1}
-          >
-            <Svg
-              source={ringSvg(remaining / cache.ttlMs, remaining === 0 ? 'cold' : formatRemaining(remaining), color)}
-              alt={remaining === 0 ? 'cache is cold' : `cache warm for ${formatRemaining(remaining)}`}
-              width={40}
-              height={40}
-            />
-            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-              <Text bold>{text.title}</Text>
-              <Text dimColor>{`${formatTokens(current.contextTokens)} context · ${text.hint}`}</Text>
-            </Box>
-            <Box flexDirection="row" columnGap={1}>
+          <Box key="cache-band" flexDirection="column">
+            <Svg source={card.source} alt={card.alt} width={width} height={card.height} />
+            <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
               <Button key="compact" label="Compact" hotkey="c" variant="primary" onPress={() => compactNow($)} />
               <Button key="handoff" label="Write handoff" hotkey="h" onPress={writeHandoff} />
               <Button key="dismiss" label="Dismiss" hotkey="d" role="dismiss" onPress={() => update($, suggestion, () => null)} />

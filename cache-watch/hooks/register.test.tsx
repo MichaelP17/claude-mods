@@ -1,7 +1,17 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { ElementQuery, FoundElement } from 'claude-code/testing'
 
 import type { Footer, Suggestion } from '../types'
+
+// The terminal writes the band as text; the desktop draws a card whose alt
+// text says the same.
+async function shows(ui: { findAll: (query: ElementQuery) => Promise<FoundElement[]> }, pattern: RegExp): Promise<boolean> {
+  const texts = await ui.findAll({ type: 'Text' })
+  const cards = await ui.findAll({ type: 'Svg' })
+
+  return [...texts.map(i => i.text), ...cards.map(i => String(i.props.alt))].some(i => pattern.test(i))
+}
 
 function seedSuggestion(on: On, value: Suggestion) {
   on('state.get', (_$, e) => ({ value: e.key === 'suggestion' ? { value, version: 1 } : { value: undefined, version: 0 } }))
@@ -34,7 +44,7 @@ test('the suggestion keeps a band drawn beneath it visible on every surface', as
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'cache-watch', surface, ...BAND })
-    expect(await ui.find({ type: 'Text', text: '🏁 Milestone reached' })).toBeDefined()
+    expect(await shows(ui, /^🏁 Milestone reached/)).toBe(true)
     expect(await ui.find({ type: 'Button', key: 'compact' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'drawn beneath' })).toBeDefined()
     await ui.unmount()
@@ -47,7 +57,7 @@ test('the suggestion draws alone when nothing is beneath', async ($, on) => {
   on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'engine', ref: 0 }))
 
   const ui = await $.ui.mount({ plugin: 'cache-watch', surface: 'desktop', ...BAND })
-  expect(await ui.find({ type: 'Text', text: '⏳ Cache expires soon' })).toBeDefined()
+  expect(await shows(ui, /^⏳ Cache expires soon/)).toBe(true)
   await ui.unmount()
 })
 

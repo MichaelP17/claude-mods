@@ -29,7 +29,7 @@ From `largeContextTokens` of context on, a band above the prompt offers **Compac
 | The cache expires in `warnMinutes` and you are idle | Compacting on a warm cache reads the context at the cache read price |
 | A turn committed or ran tests green | A unit of work ended; nothing in flight gets lost |
 
-A running turn is never interrupted.
+A running turn is never interrupted. In the desktop app the band is a card with a ring for the time the cache has left and a bar at its foot that runs out with it, the buttons laid over its right edge.
 
 **Write handoff** sends a prompt that asks Claude to write `HANDOFF.md` at the repository root: goal, state, decisions with their reasons, rejected approaches, open points and the exact next step.
 
