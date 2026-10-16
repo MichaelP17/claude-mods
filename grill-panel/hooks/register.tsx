@@ -26,9 +26,21 @@ import {
   roundKeyOf,
   skipCurrent,
 } from './rounds'
-import { headerCard, noticeCard, previewCard, questionCards, recommendationCards, reviewCard, sendingCard } from './look'
+import {
+  barCard,
+  buttonWidthOf,
+  columnsOf,
+  fieldCard,
+  headerCard,
+  noticeCard,
+  previewCard,
+  questionCards,
+  recommendationCards,
+  reviewCard,
+  sendingCard,
+} from './look'
 import type { Card, Segment } from './look'
-import { cardWidthOf } from './svg'
+import { PAD, cardWidthOf } from './svg'
 
 const PANE = 'grill'
 const TITLE = 'Grill'
@@ -359,45 +371,85 @@ function drawCards(ui: RemoteElements, cards: readonly Card[], width: number): R
   return cards.map(card => <Svg source={card.source} alt={card.alt} width={width} height={card.height} />)
 }
 
-function drawHeader(ui: RemoteElements, value: Round, width: number, eyebrow: string, title: string): RenderElement {
-  const total = value.questions.length
-  const card = headerCard({ width, eyebrow, title, counter: `${total - openCount(value)}/${total} answered`, segments: segmentsOf(value) })
+// Below this width a card leaves too little room beside native controls, so
+// they go beneath it instead of over it.
+const ROOMY_WIDTH = 420
 
-  return drawCards(ui, [card], width)[0] as RenderElement
+const FIELD_LABEL_WIDTH = 176
+
+// The cards are pictures and take no presses: every control is a native
+// element, laid over the card it belongs to, centered on its height.
+function drawLayered(ui: RemoteElements, key: string, cards: readonly Card[], width: number, overlays: readonly { side: 'left' | 'right'; children: RenderElement[] }[]): RenderElement {
+  const { Box } = ui
+
+  return (
+    <Box key={key} flexDirection="column">
+      {drawCards(ui, cards, width)}
+      {overlays.map(overlay => (
+        <Box position="absolute" top={0} bottom={0} {...(overlay.side === 'right' ? { right: 2 } : { left: 2 })} flexDirection="row" alignItems="center" columnGap={1}>
+          {overlay.children}
+        </Box>
+      ))}
+    </Box>
+  )
 }
 
-// The cards are pictures and take no presses, so every control sits beneath
-// the card it belongs to as a native element.
+function stepLabelOf(value: Round, index: number): string {
+  if (value.answers[index] !== null) {
+    return `✓ ${index + 1}`
+  }
+
+  return value.skipped[index] === true ? `↷ ${index + 1}` : String(index + 1)
+}
+
+function drawHeader(ui: RemoteElements, value: Round, width: number, eyebrow: string, title: string, steps: RenderElement[] | null = null): RenderElement {
+  const total = value.questions.length
+  const counter = `${total - openCount(value)}/${total} answered`
+  if (steps === null) {
+    return drawCards(ui, [headerCard({ width, eyebrow, title, counter, segments: segmentsOf(value) })], width)[0] as RenderElement
+  }
+  const reserve = buttonWidthOf(value.questions.map((_, index) => stepLabelOf(value, index)))
+  const card = headerCard({ width, eyebrow, title, counter, segments: segmentsOf(value), reserve })
+
+  return drawLayered(ui, 'header', [card], width, [{ side: 'right', children: steps }])
+}
+
 function drawRemote($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null, width: number): RenderElement {
   const { Box, Button, Text } = ui
   const total = value.questions.length
   const open = openCount(value)
+  const isRoomy = width >= ROOMY_WIDTH
 
   if (value.mode === 'sending') {
     return <Box flexDirection="column">{drawCards(ui, [sendingCard(width)], width)}</Box>
   }
 
-  if (value.mode === 'confirm-send') {
-    return (
-      <Box flexDirection="column" rowGap={1}>
-        {drawCards(ui, noticeCard(width, 'card-warning', 'Send with open questions?', `${open} of ${total} questions are unanswered and go out as "(unanswered)".`), width)}
-        <Box flexDirection="row" columnGap={1}>
-          <Button key="confirm-send" variant="primary" autoFocus label="➤ Send anyway" onPress={() => send($)} />
-          <Button key="cancel" label="✎ Keep answering" onPress={e => cancel($, e.surface)} />
-        </Box>
-      </Box>
-    )
-  }
-
-  if (value.mode === 'confirm-discard') {
-    return (
-      <Box flexDirection="column" rowGap={1}>
-        {drawCards(ui, noticeCard(width, 'card-error', 'Discard this round?', 'The panel stops offering it; /grill brings it back with its answers.'), width)}
-        <Box flexDirection="row" columnGap={1}>
-          <Button key="cancel" variant="primary" autoFocus label="Keep round" onPress={e => cancel($, e.surface)} />
+  if (value.mode === 'confirm-send' || value.mode === 'confirm-discard') {
+    const isSend = value.mode === 'confirm-send'
+    const buttons = isSend
+      ? [
+          <Button key="confirm-send" variant="primary" autoFocus label="➤ Send anyway" onPress={() => send($)} />,
+          <Button key="cancel" label="✎ Keep answering" onPress={e => cancel($, e.surface)} />,
+        ]
+      : [
+          <Button key="cancel" variant="primary" autoFocus label="Keep round" onPress={e => cancel($, e.surface)} />,
           <Button key="confirm-discard" onPress={() => discard($)}>
             <Text color="error">✕ Discard</Text>
-          </Button>
+          </Button>,
+        ]
+    const reserve = isRoomy ? buttonWidthOf(isSend ? ['➤ Send anyway', '✎ Keep answering'] : ['Keep round', '✕ Discard']) : 0
+    const notice = isSend
+      ? noticeCard(width, 'card-warning', 'Send with open questions?', `${open} of ${total} questions are unanswered and go out as "(unanswered)".`, reserve)
+      : noticeCard(width, 'card-error', 'Discard this round?', 'The panel stops offering it; /grill brings it back with its answers.', reserve)
+    if (isRoomy) {
+      return drawLayered(ui, 'notice', notice, width, [{ side: 'right', children: buttons }])
+    }
+
+    return (
+      <Box flexDirection="column" rowGap={1}>
+        {drawCards(ui, notice, width)}
+        <Box flexDirection="row" columnGap={1}>
+          {buttons}
         </Box>
       </Box>
     )
@@ -442,55 +494,97 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
   // The desktop's field is a single line, so a longer answer scrolls out of
   // sight; the card beneath it shows the whole of what Enter will save.
   const preview = shown.trim().length > 0 ? previewCard(width, shown.trim(), typedChoice) : []
+  const isRoomy = width >= ROOMY_WIDTH
+  const steps = value.questions.map((_, index) => drawStep($, ui, value, index))
+  const stepsFit = isRoomy && buttonWidthOf(value.questions.map((_, index) => stepLabelOf(value, index))) <= (width - 2 * PAD) / 2
+  const title = question.title.length > 0 ? question.title : `Question ${question.number}`
+  const isAccepted = answer?.kind === 'recommendation'
+  const recommendationButtons = [
+    <Button
+      key="accept-recommendation"
+      variant="primary"
+      {...(start === 'accept-recommendation' ? { autoFocus: true as const } : {})}
+      label={isAccepted ? '✓ Accepted' : isRoomy ? '✓ Accept' : '✓ Accept recommendation'}
+      onPress={e => submit($, '', e.surface)}
+    />,
+    <Button key="edit-recommendation" label={isRoomy ? '✎ Edit' : '✎ Edit before saving'} onPress={e => useRecommendation($, e.surface)} />,
+  ]
+  const input = (
+    <Input
+      key={field}
+      value={fieldValue}
+      placeholder={hasChoices ? 'A letter, or your own answer' : 'Your answer'}
+      submitLabel="Save"
+      {...(start === field ? { autoFocus: true as const } : {})}
+      onInput={text => {
+        void update($, draft, () => ({ field, text }))
+      }}
+      onSubmit={(text, e) => {
+        void submit($, text, e.surface)
+      }}
+    />
+  )
+  const skipButton = <Button key="skip" dimColor label="↷ Skip for now" onPress={e => skip($, e.surface)} />
+  const endButtons = [
+    <Button key="send" dimColor label="➤ Send now…" onPress={() => requestSend($)} />,
+    <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard" onPress={() => requestDiscard($)} />,
+  ]
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      {drawHeader(ui, value, width, `QUESTION ${value.current + 1} OF ${total}`, question.title.length > 0 ? question.title : `Question ${question.number}`)}
-      <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-        {value.questions.map((_, index) => drawStep($, ui, value, index))}
-      </Box>
-      {drawCards(ui, questionCards(width, question, answer), width)}
-      {question.recommendation !== null && (
+      {stepsFit ? (
+        drawHeader(ui, value, width, `QUESTION ${value.current + 1} OF ${total}`, title, steps)
+      ) : (
         <Box flexDirection="column" rowGap={1}>
-          {drawCards(ui, recommendationCards(width, question.recommendation, answer?.kind === 'recommendation'), width)}
+          {drawHeader(ui, value, width, `QUESTION ${value.current + 1} OF ${total}`, title)}
           <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-            <Button
-              key="accept-recommendation"
-              variant="primary"
-              {...(start === 'accept-recommendation' ? { autoFocus: true as const } : {})}
-              label={answer?.kind === 'recommendation' ? '✓ Accepted' : '✓ Accept recommendation'}
-              onPress={e => submit($, '', e.surface)}
-            />
-            <Button key="edit-recommendation" label="✎ Edit before saving" onPress={e => useRecommendation($, e.surface)} />
+            {steps}
           </Box>
         </Box>
       )}
-      <Box flexDirection="column" alignItems="stretch" rowGap={0}>
-        <Text bold dimColor>
-          {hasChoices ? 'YOUR ANSWER · A LETTER OR YOUR OWN WORDS' : 'YOUR ANSWER'}
-        </Text>
-        <Input
-          key={field}
-          value={fieldValue}
-          placeholder={hasChoices ? 'A letter, or your own answer · Enter saves' : 'Your answer · Enter saves'}
-          submitLabel="Save"
-          {...(start === field ? { autoFocus: true as const } : {})}
-          onInput={text => {
-            void update($, draft, () => ({ field, text }))
-          }}
-          onSubmit={(text, e) => {
-            void submit($, text, e.surface)
-          }}
-        />
-      </Box>
-      {drawCards(ui, preview, width)}
-      <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap" columnGap={1}>
-        <Button key="skip" dimColor label="↷ Skip for now" onPress={e => skip($, e.surface)} />
-        <Box flexDirection="row" columnGap={1}>
-          <Button key="send" dimColor label="➤ Send now…" onPress={() => requestSend($)} />
-          <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard" onPress={() => requestDiscard($)} />
+      {drawCards(ui, questionCards(width, question, answer), width)}
+      {question.recommendation !== null &&
+        (isRoomy ? (
+          drawLayered(ui, 'recommendation', recommendationCards(width, question.recommendation, isAccepted, buttonWidthOf([isAccepted ? '✓ Accepted' : '✓ Accept', '✎ Edit'])), width, [
+            { side: 'right', children: recommendationButtons },
+          ])
+        ) : (
+          <Box flexDirection="column" rowGap={1}>
+            {drawCards(ui, recommendationCards(width, question.recommendation, isAccepted), width)}
+            <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+              {recommendationButtons}
+            </Box>
+          </Box>
+        ))}
+      {isRoomy ? (
+        <Box key="answer-card" flexDirection="column">
+          {drawCards(ui, [fieldCard(width, 'YOUR ANSWER', hasChoices ? 'A letter or your own words · Enter saves' : 'Enter saves it', FIELD_LABEL_WIDTH)], width)}
+          <Box position="absolute" top={0} bottom={0} left={columnsOf(FIELD_LABEL_WIDTH)} right={2} flexDirection="column" justifyContent="center">
+            {input}
+          </Box>
         </Box>
-      </Box>
+      ) : (
+        <Box flexDirection="column" alignItems="stretch" rowGap={0}>
+          <Text bold dimColor>
+            {hasChoices ? 'YOUR ANSWER · A LETTER OR YOUR OWN WORDS' : 'YOUR ANSWER'}
+          </Text>
+          {input}
+        </Box>
+      )}
+      {drawCards(ui, preview, width)}
+      {isRoomy ? (
+        drawLayered(ui, 'controls', [barCard(width, 'Skip, send or discard the round')], width, [
+          { side: 'left', children: [skipButton] },
+          { side: 'right', children: endButtons },
+        ])
+      ) : (
+        <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap" columnGap={1}>
+          {skipButton}
+          <Box flexDirection="row" columnGap={1}>
+            {endButtons}
+          </Box>
+        </Box>
+      )}
     </Box>
   )
 }
@@ -499,17 +593,37 @@ function drawRemoteReview($: EngineInterface, ui: RemoteElements, value: Round, 
   const { Box, Button, Text } = ui
   const total = value.questions.length
   const open = openCount(value)
+  const isRoomy = width >= ROOMY_WIDTH
+  const sendButton = <Button key="send" variant="primary" autoFocus label="➤ Send to Claude" onPress={() => requestSend($)} />
+  const discardButton = <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard round" onPress={() => requestDiscard($)} />
+  const editOf = (index: number, label: string) => <Button key={`edit-${index}`} dimColor label={label} onPress={e => edit($, index, e.surface)} />
+  const header = drawHeader(ui, value, width, 'REVIEW', open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`)
+
+  if (isRoomy) {
+    const reserve = buttonWidthOf(['✎ Edit'])
+
+    return (
+      <Box flexDirection="column" rowGap={1}>
+        {header}
+        {value.questions.map((question, index) =>
+          drawLayered(ui, `review-${index}`, [reviewCard(width, index, question, value.answers[index] ?? null, reserve)], width, [{ side: 'right', children: [editOf(index, '✎ Edit')] }]),
+        )}
+        {drawLayered(ui, 'review-controls', [barCard(width, 'Send the answers or discard the round')], width, [
+          { side: 'left', children: [sendButton] },
+          { side: 'right', children: [discardButton] },
+        ])}
+      </Box>
+    )
+  }
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      {drawHeader(ui, value, width, 'REVIEW', open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`)}
+      {header}
       <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
         <Text bold dimColor>
           EDIT
         </Text>
-        {value.questions.map((_, index) => (
-          <Button key={`edit-${index}`} dimColor label={`✎ ${index + 1}`} onPress={e => edit($, index, e.surface)} />
-        ))}
+        {value.questions.map((_, index) => editOf(index, `✎ ${index + 1}`))}
       </Box>
       {drawCards(
         ui,
@@ -517,8 +631,8 @@ function drawRemoteReview($: EngineInterface, ui: RemoteElements, value: Round, 
         width,
       )}
       <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-        <Button key="send" variant="primary" autoFocus label="➤ Send to Claude" onPress={() => requestSend($)} />
-        <Button key="discard" dimColor hover={DISCARD_HOVER} label="✕ Discard round" onPress={() => requestDiscard($)} />
+        {sendButton}
+        {discardButton}
       </Box>
     </Box>
   )

@@ -4,7 +4,7 @@ import type { Choice } from './rounds'
 import { LINE, PAD, SIZE, blockSections, cards, escape, eyebrowSection, eyebrowSvg, eyebrowWidth, fitText, frame, parseBlocks, parseInline, plainOf, svgDocument, textSection, textWidth } from './svg'
 import type { Card, Section, Variant } from './svg'
 
-export { headerCard, noticeCard } from './svg'
+export { barCard, buttonWidthOf, columnsOf, fieldCard, headerCard, noticeCard } from './svg'
 export type { Card, Segment } from './svg'
 
 type ChoiceState = 'plain' | 'recommended' | 'chosen'
@@ -74,14 +74,17 @@ export function questionCards(width: number, question: Question, answer: Answer 
   return cards(width, 'card', sections, plainOf(question.body.replace(/\s+/gu, ' ')))
 }
 
-export function recommendationCards(width: number, recommendation: string, isAccepted: boolean): Card[] {
+// `reserve` keeps the text clear of the native buttons laid over the right
+// side, which then also take the place of the accepted mark.
+export function recommendationCards(width: number, recommendation: string, isAccepted: boolean, reserve = 0): Card[] {
   const letter = recommendedLetterOf(recommendation)
+  const head = letter === null ? '★ RECOMMENDATION' : `★ RECOMMENDATION · CHOICE ${letter.toUpperCase()}`
   const sections = [
-    eyebrowSection(letter === null ? '★ RECOMMENDATION' : `★ RECOMMENDATION · CHOICE ${letter.toUpperCase()}`, isAccepted ? '✓ ACCEPTED' : null, 'success', width),
-    ...blockSections(parseBlocks(recommendation), PAD, width - 2 * PAD),
+    reserve > 0 ? eyebrowSection(isAccepted ? `${head} · ✓ ACCEPTED` : head, null, 'success', width) : eyebrowSection(head, isAccepted ? '✓ ACCEPTED' : null, 'success', width),
+    ...blockSections(parseBlocks(recommendation), PAD, width - 2 * PAD - reserve),
   ]
 
-  return cards(width, isAccepted ? 'card-success' : 'card-accent', sections, `Recommendation: ${plainOf(recommendation.replace(/\s+/gu, ' '))}`)
+  return cards(width, isAccepted ? 'card-success' : 'card-accent', sections, `Recommendation: ${plainOf(recommendation.replace(/\s+/gu, ' '))}`, '', reserve > 0 ? 72 : 0)
 }
 
 // What Enter will save, wrapped: the field itself is one line, and a typed
@@ -98,10 +101,10 @@ export function previewCard(width: number, text: string, choice: Choice | undefi
   return cards(width, 'card', [head, body], choice === undefined ? `Your answer: ${text}` : `Saves choice ${choice.letter}: ${plainOf(choice.text)}`)
 }
 
-export function reviewCard(width: number, index: number, question: Question, answer: Answer | null): Card {
+export function reviewCard(width: number, index: number, question: Question, answer: Answer | null, reserve = 0): Card {
   const badge = 26
   const x = PAD + badge + 12
-  const inner = width - x - PAD
+  const inner = width - x - PAD - reserve
   const title = textSection(parseInline(question.title.length > 0 ? question.title : `Question ${question.number}`).map(i => ({ ...i, isBold: true })), x, inner, { maxLines: 2 })
   const body =
     answer === null
@@ -110,7 +113,7 @@ export function reviewCard(width: number, index: number, question: Question, ans
         ? textSection([{ text: '★ Recommendation accepted' }], x, inner, { tone: 'accent' })
         : textSection(parseInline(answer.text.replace(/\n+/gu, ' ')), x, inner, { maxLines: 8 })
   const detail = answer?.kind === 'recommendation' && question.recommendation !== null ? textSection(parseInline(question.recommendation.replace(/\s+/gu, ' ')), x, inner, { tone: 'muted', maxLines: 3 }) : null
-  const height = PAD + title.height + 4 + body.height + (detail === null ? 0 : detail.height + 2) + PAD
+  const height = Math.max(reserve > 0 ? 64 : 0, PAD + title.height + 4 + body.height + (detail === null ? 0 : detail.height + 2) + PAD)
   const variant: Variant = answer === null ? 'card-warning' : 'card'
   const circle = answer === null ? 'skipped' : 'success'
   const centerY = PAD + badge / 2

@@ -166,7 +166,7 @@ test('on the desktop the choices are tiles in the question card and a typed lett
   expect(await altsOf(ui)).toContain('What is tomorrow? (a) A work day (b) A day off (c) Mixed')
   expect(await ui.find({ key: 'choice-0' })).toBeUndefined()
   expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
-  expect((await ui.find({ key: 'answer-0' }))?.props.placeholder).toBe('A letter, or your own answer · Enter saves')
+  expect((await ui.find({ key: 'answer-0' }))?.props.placeholder).toBe('A letter, or your own answer')
 
   await ui.input({ key: 'answer-0', text: 'b' })
   expect(await headerOf(ui)).toBe('QUESTION 2 OF 2: Focus, 1/2 answered')
@@ -206,6 +206,23 @@ test('choices written as "a)" list items are tiles too, and a typed letter saves
   await ui.press({ key: 'send' })
   await ui.unmount()
   expect(world.submitted).toEqual(['Q1: (a) C# als .NET Global Tool'])
+})
+
+test('on the desktop the controls lie over the cards, and a narrow pane keeps them beneath', async ($, on) => {
+  fakeEngine(on)
+  await $.session.start(START)
+  await $.turn.complete(TURN)
+  const wide = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  const layers = await wide.findAll({ type: 'Box' })
+  expect(layers.filter(i => i.props.position === 'absolute').length).toBeGreaterThanOrEqual(4)
+  expect(await wide.find({ key: 'accept-recommendation', text: '✓ Accept' })).toBeDefined()
+  await wide.unmount()
+
+  const narrow = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE, props: { ...PANE.props, bodyColumns: 40 } })
+  const flat = await narrow.findAll({ type: 'Box' })
+  expect(flat.some(i => i.props.position === 'absolute')).toBe(false)
+  expect(await narrow.find({ key: 'accept-recommendation', text: '✓ Accept recommendation' })).toBeDefined()
+  await narrow.unmount()
 })
 
 test('on the desktop the steps jump to any question', async ($, on) => {

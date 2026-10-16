@@ -20,14 +20,15 @@ The table describes the terminal. The desktop app and VS Code draw the same flow
 
 | Where | What you see |
 | --- | --- |
-| the header card | `Question 2 of 5`, the title and one bar segment per question: green answered, amber skipped, the current one pulsing in the accent color |
-| below it | a numbered button per question (`✓` once answered); a click jumps there |
+| the header card | `Question 2 of 5`, the title and one bar segment per question: green answered, amber skipped, the current one pulsing in the accent color; at its right a numbered button per question (`✓` once answered), a click jumps there |
 | the question card | the question's text with its Markdown (bold, code, lists, quotes, code blocks); choices written as `(a) … (b) …` or as `a)`, `a.` list items become lettered tiles, the recommended one framed in the accent color, the one you picked in green |
-| the recommendation card | the recommendation, with the choice it names; green once accepted. Beneath it **Accept recommendation** and **Edit before saving** |
-| where the focus starts | on **Accept recommendation**, so Enter alone takes it; on the field when the question has no recommendation or was answered in text before |
-| the field | a new field per question; Enter saves. A card beneath it shows what Enter will save, wrapped, as you type; a letter alone (`b`) saves that choice, and the card names it |
-| below the field | **Skip for now**, and dimmed **Send now…** and **Discard** |
-| the review | one card per question with its answer, open ones in the warning color, and a row of **✎** buttons to change any of them |
+| the recommendation card | the recommendation, with the choice it names; green once accepted. At its right **Accept** and **Edit** |
+| where the focus starts | on **Accept**, so Enter alone takes it; on the field when the question has no recommendation or was answered in text before |
+| the answer card | a new field per question; Enter saves. A card beneath it shows what Enter will save, wrapped, as you type; a letter alone (`b`) saves that choice, and the card names it |
+| the bar at the foot | **Skip for now**, and dimmed **Send now…** and **Discard** |
+| the review | one card per question with its answer and **✎ Edit**, open ones in the warning color; a bar with **Send to Claude** and **Discard round** |
+
+The buttons and the field are the app's own controls laid over the cards. In a pane narrower than about 420 pixels they move beneath the cards instead, and the steps do too when a round has too many questions to fit beside the title.
 
 The cards cannot measure their text, so line breaks are estimated a little on the safe side, and a link shows its text without being clickable.
 

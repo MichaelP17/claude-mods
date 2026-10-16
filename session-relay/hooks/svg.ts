@@ -326,6 +326,12 @@ export function cardWidthOf(columns: number): number {
   return Math.max(240, Math.min(900, (columns || 40) * 8 - 8))
 }
 
+// The columns a native control laid over a card is pushed in by to clear
+// `pixels` of the card, at the same 8 pixels per column.
+export function columnsOf(pixels: number): number {
+  return Math.ceil(pixels / 8)
+}
+
 // About how wide the desktop draws a row of native buttons with these labels,
 // for text that has to keep clear of buttons laid over a card.
 export function buttonWidthOf(labels: readonly string[]): number {
@@ -446,7 +452,8 @@ export function blockSections(blocks: readonly Block[], x: number, maxWidth: num
 }
 
 // Stacks sections inside one frame; past MAX_HEIGHT the rest go on in a next one.
-export function cards(width: number, variant: Variant, sections: readonly Section[], alt: string, decoration = ''): Card[] {
+// `minHeight` keeps a short card tall enough for native controls laid over it.
+export function cards(width: number, variant: Variant, sections: readonly Section[], alt: string, decoration = '', minHeight = 0): Card[] {
   const result: Card[] = []
   let pending: Section[] = []
   let used = 2 * PAD
@@ -461,7 +468,8 @@ export function cards(width: number, variant: Variant, sections: readonly Sectio
 
       return drawn
     })
-    const height = Math.ceil(y + PAD)
+    const natural = Math.ceil(y + PAD)
+    const height = result.length === 0 ? Math.max(natural, minHeight) : natural
     result.push({ height, alt, source: svgDocument(width, height, frame(width, height, variant) + (result.length === 0 ? decoration : '') + body.join('')) })
     pending = []
     used = 2 * PAD
@@ -483,13 +491,14 @@ export const GLOW =
 
 // The card heading a pane: an eyebrow, a count at the right, a title of up
 // to two lines and, given segments, a bar with one segment per step.
-export function headerCard(card: { width: number; eyebrow: string; title: string; counter: string; segments?: readonly Segment[] }): Card {
+// `reserve` keeps the title clear of native buttons laid over the right side.
+export function headerCard(card: { width: number; eyebrow: string; title: string; counter: string; segments?: readonly Segment[]; reserve?: number }): Card {
   const { width } = card
   const segments = card.segments ?? []
   const inner = width - 2 * PAD
   const counterWidth = textWidth(card.counter, 12)
   const eyebrow = fitText(card.eyebrow, inner - counterWidth - 16, EYEBROW, true)
-  const title = textSection(parseInline(card.title).map(i => ({ ...i, isBold: true })), PAD, inner, { size: 17, maxLines: 2 })
+  const title = textSection(parseInline(card.title).map(i => ({ ...i, isBold: true })), PAD, inner - (card.reserve ?? 0), { size: 17, maxLines: 2 })
   const titleTop = PAD + EYEBROW + 8
   const barY = titleTop + title.height + 12
   const height = segments.length === 0 ? titleTop + title.height + PAD - 4 : barY + 6 + PAD
@@ -511,12 +520,38 @@ export function headerCard(card: { width: number; eyebrow: string; title: string
   return { height, alt: `${card.eyebrow}: ${plainOf(card.title)}, ${card.counter}`, source: svgDocument(width, height, body.join('')) }
 }
 
-export function noticeCard(width: number, variant: 'card-warning' | 'card-error', title: string, text: string): Card[] {
-  const inner = width - 2 * PAD
+export function noticeCard(width: number, variant: 'card-warning' | 'card-error', title: string, text: string, reserve = 0): Card[] {
+  const inner = width - 2 * PAD - reserve
   const body = textSection([{ text }], PAD, inner, { tone: 'muted' })
   const sections = [textSection([{ text: title, isBold: true }], PAD, inner, { size: 15 }), { height: body.height + 6, draw: (y: number) => body.draw(y + 6) }]
 
-  return cards(width, variant, sections, `${title} ${text}`)
+  return cards(width, variant, sections, `${title} ${text}`, '', reserve > 0 ? 72 : 0)
+}
+
+const FIELD_HEIGHT = 72
+
+// A card holding a native text field: its label and a hint in a column at the
+// left, the rest left free for the field laid over it. `labelWidth` is that
+// column's width; the field starts past it.
+export function fieldCard(width: number, label: string, hint: string, labelWidth: number): Card {
+  const maxWidth = labelWidth - PAD - 12
+  const hints = wrapRuns([{ text: hint }], maxWidth, 12).slice(0, 2)
+  const top = FIELD_HEIGHT / 2 - (hints.length * 16 + EYEBROW + 6) / 2 + EYEBROW
+  const body = [
+    frame(width, FIELD_HEIGHT, 'card'),
+    eyebrowSvg(fitText(label, maxWidth, EYEBROW, true), PAD, top),
+    ...hints.map((line, index) => lineSvg(line, PAD, top + 18 + index * 16, 12, 'muted')),
+    `<rect class="rule" x="${labelWidth - 6}" y="16" width="1" height="${FIELD_HEIGHT - 32}"/>`,
+  ]
+
+  return { height: FIELD_HEIGHT, alt: `${label}: ${hint}`, source: svgDocument(width, FIELD_HEIGHT, body.join('')) }
+}
+
+// A slim card for a row of native buttons laid over it.
+export function barCard(width: number, alt: string): Card {
+  const height = 56
+
+  return { height, alt, source: svgDocument(width, height, frame(width, height, 'card')) }
 }
 
 // A diff or a list of changes in the code font: added lines green, removed
