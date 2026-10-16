@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { ElementQuery, Engine, FoundElement } from 'claude-code/testing'
 
 import { parseQuestions, roundKeyOf } from './rounds'
 
@@ -58,6 +58,12 @@ async function footerText($: Engine): Promise<string | undefined> {
   await ui.unmount()
 
   return label?.text
+}
+
+async function headerOf(ui: { find: (query: ElementQuery) => Promise<FoundElement | undefined> }): Promise<unknown> {
+  const card = await ui.find({ type: 'Svg' })
+
+  return card?.props.alt
 }
 
 function fakeEngine(on: On, stored: Record<string, unknown> = {}, now = 100 * DAY): World {
@@ -130,8 +136,7 @@ test('a turn ending on a round opens the panel on the first question', async ($,
   await ui.unmount()
 
   const desktop = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
-  expect(await desktop.find({ type: 'Text', text: 'QUESTION 1 OF 3' })).toBeDefined()
-  expect(await desktop.find({ type: 'Text', text: 'Answers' })).toBeDefined()
+  expect(await headerOf(desktop)).toBe('QUESTION 1 OF 3: Answers, 0/3 answered')
   expect(await desktop.find({ type: 'Markdown', text: 'The panel' })).toBeDefined()
   expect(await desktop.find({ key: 'accept-recommendation' })).toBeDefined()
   expect(await desktop.find({ type: 'Text', text: /Shift\+Tab/ })).toBeUndefined()
@@ -156,7 +161,7 @@ test('on the desktop the choices stay in the question text and a typed letter pi
   expect((await ui.find({ key: 'answer-0' }))?.props.placeholder).toBe('A letter or your own answer, Enter saves it')
 
   await ui.input({ key: 'answer-0', text: 'b' })
-  expect(await ui.find({ type: 'Text', text: 'Focus' })).toBeDefined()
+  expect(await headerOf(ui)).toBe('QUESTION 2 OF 2: Focus, 1/2 answered')
   expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
 
   await ui.press({ key: 'goto-0' })
@@ -165,7 +170,7 @@ test('on the desktop the choices stay in the question text and a typed letter pi
   await ui.press({ key: 'goto-1' })
 
   await ui.press({ key: 'accept-recommendation' })
-  expect(await ui.find({ type: 'Text', text: 'All questions answered' })).toBeDefined()
+  expect(await headerOf(ui)).toBe('REVIEW: All questions answered, 2/2 answered')
   await ui.press({ key: 'send' })
   await ui.unmount()
   expect(world.submitted).toEqual(['Q1: (b) A day off\n\nQ2: Recommendation accepted'])
@@ -180,7 +185,7 @@ test('on the desktop the steps jump to any question', async ($, on) => {
   expect(await ui.find({ key: 'goto-0', text: '✓ 1' })).toBeDefined()
 
   await ui.press({ key: 'goto-2' })
-  expect(await ui.find({ type: 'Text', text: 'QUESTION 3 OF 3' })).toBeDefined()
+  expect(await headerOf(ui)).toMatch(/^QUESTION 3 OF 3: Push/)
   await ui.press({ key: 'goto-0' })
   expect(await ui.find({ key: 'answer-0', text: 'Panel' })).toBeDefined()
   expect((await ui.find({ key: 'answer-0' }))?.props.autoFocus).toBe(true)
@@ -248,7 +253,11 @@ test('answering every question, the last by taking the recommendation, sends Q l
       await ui.input({ key: 'answer', text: 'grill-panel' })
       await ui.input({ key: 'answer', text: '   ' })
     }
-    expect(await ui.find({ type: 'Text', text: 'All questions answered' })).toBeDefined()
+    if (surface === 'terminal') {
+      expect(await ui.find({ type: 'Text', text: 'All questions answered' })).toBeDefined()
+    } else {
+      expect(await headerOf(ui)).toBe('REVIEW: All questions answered, 3/3 answered')
+    }
     if (surface === 'terminal') {
       expect(await ui.find({ key: 'edit-2', text: /recommendation accepted/ })).toBeDefined()
     } else {
@@ -327,7 +336,7 @@ test('sending early asks first and marks open questions', async ($, on) => {
   await ui.press({ key: 'send' })
   expect(await ui.find({ type: 'Text', text: /2 of 3 questions are unanswered/ })).toBeDefined()
   await ui.press({ key: 'cancel' })
-  expect(await ui.find({ type: 'Text', text: 'Name' })).toBeDefined()
+  expect(await headerOf(ui)).toMatch(/^QUESTION 2 OF 3: Name/)
 
   await ui.press({ key: 'send' })
   await ui.press({ key: 'confirm-send' })
@@ -365,7 +374,7 @@ test('after a restart the conversation ending on the round picks up where it sto
 
   const desktop = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
   expect(await desktop.find({ key: 'goto-0', text: '✓ 1' })).toBeDefined()
-  expect(await desktop.find({ type: 'Text', text: 'QUESTION 2 OF 3' })).toBeDefined()
+  expect(await headerOf(desktop)).toBe('QUESTION 2 OF 3: Name, 1/3 answered')
   await desktop.unmount()
 })
 

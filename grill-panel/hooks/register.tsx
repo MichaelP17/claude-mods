@@ -24,7 +24,8 @@ import {
   roundKeyOf,
   skipCurrent,
 } from './rounds'
-import { ringSvg } from './look'
+import { headerSvg } from './look'
+import type { Segment } from './look'
 
 const PANE = 'grill'
 const TITLE = 'Grill'
@@ -340,25 +341,37 @@ function drawStep($: EngineInterface, ui: RemoteElements, value: Round, index: n
   return <Button key={`goto-${index}`} dimColor label={number} onPress={e => press(e.surface)} />
 }
 
-function drawHeader(ui: RemoteElements, eyebrow: string, title: string, done: number, total: number): RenderElement {
-  const { Box, Svg, Text } = ui
+// The pane reports its width in columns only; about 8 CSS pixels each, as
+// savvy-progress measures it, minus the pane's own inset.
+function cardWidthOf(columns: number): number {
+  return Math.max(240, Math.min(900, (columns || 40) * 8 - 8))
+}
 
-  return (
-    <Box flexDirection="row" columnGap={2} alignItems="center">
-      <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-        <Text bold color="claude">
-          {eyebrow}
-        </Text>
-        <Text bold>{title}</Text>
-      </Box>
-      <Svg source={ringSvg(done, total)} alt={`${done} of ${total} answered`} width={44} height={44} />
-    </Box>
-  )
+function segmentsOf(value: Round): Segment[] {
+  return value.questions.map((_, index) => {
+    if (index === value.current && value.mode === 'answer') {
+      return 'current'
+    }
+    if (value.answers[index] !== null) {
+      return 'answered'
+    }
+
+    return value.skipped[index] === true ? 'skipped' : 'open'
+  })
+}
+
+function drawHeader(ui: RemoteElements, value: Round, width: number, eyebrow: string, title: string): RenderElement {
+  const { Svg } = ui
+  const total = value.questions.length
+  const counter = `${total - openCount(value)}/${total} answered`
+  const card = headerSvg({ width, eyebrow, title, counter, segments: segmentsOf(value) })
+
+  return <Svg source={card.source} alt={`${eyebrow}: ${title}, ${counter}`} width={width} height={card.height} />
 }
 
 // The desktop and the editor draw native controls and borders, so the terminal's
 // glyph lists and key hints give way to steps, cards and buttons there.
-function drawRemote($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null): RenderElement {
+function drawRemote($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null, width: number): RenderElement {
   const { Box, Button, Text } = ui
   const total = value.questions.length
   const open = openCount(value)
@@ -396,13 +409,13 @@ function drawRemote($: EngineInterface, ui: RemoteElements, value: Round, typed:
   }
 
   if (value.mode === 'review') {
-    return drawRemoteReview($, ui, value)
+    return drawRemoteReview($, ui, value, width)
   }
 
-  return drawRemoteQuestion($, ui, value, typed)
+  return drawRemoteQuestion($, ui, value, typed, width)
 }
 
-function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null): RenderElement {
+function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null, width: number): RenderElement {
   const { Box, Button, Input, Markdown, Text } = ui
   const question = value.questions[value.current]
   if (question === undefined) {
@@ -418,13 +431,7 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      {drawHeader(
-        ui,
-        `QUESTION ${value.current + 1} OF ${total}`,
-        question.title.length > 0 ? question.title : `Question ${question.number}`,
-        total - openCount(value),
-        total,
-      )}
+      {drawHeader(ui, value, width, `QUESTION ${value.current + 1} OF ${total}`, question.title.length > 0 ? question.title : `Question ${question.number}`)}
       <Box flexDirection="row" columnGap={1} flexWrap="wrap">
         {value.questions.map((_, index) => drawStep($, ui, value, index))}
       </Box>
@@ -481,14 +488,14 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
   )
 }
 
-function drawRemoteReview($: EngineInterface, ui: RemoteElements, value: Round): RenderElement {
+function drawRemoteReview($: EngineInterface, ui: RemoteElements, value: Round, width: number): RenderElement {
   const { Box, Button, Text } = ui
   const total = value.questions.length
   const open = openCount(value)
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      {drawHeader(ui, 'REVIEW', open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`, total - open, total)}
+      {drawHeader(ui, value, width, 'REVIEW', open === 0 ? 'All questions answered' : `${open} of ${total} unanswered`)}
       <Text dimColor>Check the answers, then send them to Claude in one message.</Text>
       <Box flexDirection="column" rowGap={1}>
         {value.questions.map((question, index) => {
@@ -602,7 +609,7 @@ export const register: Register = on => {
         return <remote.Text dimColor>No open question round. /grill brings back the latest one.</remote.Text>
       }
 
-      return drawRemote($, remote, value, await read($, draft))
+      return drawRemote($, remote, value, await read($, draft), cardWidthOf(e.props.bodyColumns))
     }
     const { Box, Button, Input, Markdown, Text } = $.ui.resolve(e)
     if (value === null) {

@@ -20,7 +20,8 @@ The table describes the terminal. The desktop app and VS Code draw the same flow
 
 | Where | What you see |
 | --- | --- |
-| above the question | `Question 2 of 5`, a progress ring, and a numbered button per question (`✓` once answered); a click jumps there |
+| above the question | a card with `Question 2 of 5`, the title and one bar segment per question: green answered, amber skipped, the current one pulsing in the accent color; it follows the light or dark color scheme |
+| below the card | a numbered button per question (`✓` once answered); a click jumps there |
 | choices written as `(a) … (b) …` | they stay in the question text as Claude wrote them; a letter alone in the field picks one, as in the terminal |
 | the recommendation | a framed card with **Accept** and **Edit before saving** |
 | where the focus starts | on **Accept**, so Enter alone takes the recommendation; on the field when the question has no recommendation or was answered in text before |
