@@ -9,7 +9,7 @@ Ideas belong to the folder Claude Code was started in. Every folder has its own 
 | `/idea <text>`, also while Claude is working | the idea is saved, a toast confirms it; Claude sees nothing |
 | `/idea` | a pane with one text field: Enter saves and empties it for the next idea, Shift+Enter adds a line in the terminal, Esc closes |
 | Ideas exist for this folder | `💡 3` in the footer under the prompt, terminal and desktop app |
-| Desktop app | `/idea`, `/ideas`, the `💡` in the footer and the hub open one Ideas pane: the field for a new idea above the waiting ideas, each with **Work on it** and **✕**; the footer and the hub open it at once, also while Claude is working |
+| Desktop app | `/idea`, `/ideas`, the `💡` in the footer and the hub open one Ideas pane: the field for a new idea above the waiting ideas, each a numbered card with its Markdown and **Work on it** and **✕** laid over its right edge; the footer and the hub open it at once, also while Claude is working |
 | `/ideas` | a pane listing the folder's ideas: pressing one puts it into the prompt and removes it from the list, **delete** drops it |
 | You ask Claude to work through the ideas | Claude reads them with its `ideas_list` tool and removes each with `idea_remove` once it is done |
 

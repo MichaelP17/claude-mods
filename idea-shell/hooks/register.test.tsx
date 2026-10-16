@@ -1,5 +1,12 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { ElementQuery, FoundElement } from 'claude-code/testing'
+
+async function cardsOf(ui: { findAll: (query: ElementQuery) => Promise<FoundElement[]> }): Promise<string[]> {
+  const cards = await ui.findAll({ type: 'Svg' })
+
+  return cards.map(i => String(i.props.alt))
+}
 
 const FILE = '/Users/test/.claude/ideas/home/Projects/app.md'
 
@@ -98,8 +105,7 @@ test('the capture pane saves each submit, multi-line ones included', async ($, o
       expect(await ui.find({ type: 'Text', text: /1 idea for this folder/ })).toBeDefined()
       expect(lineBreakHint).toBeDefined()
     } else {
-      expect(await ui.find({ type: 'Text', text: '1 waiting in app' })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: 'Split the importer\nby source' })).toBeDefined()
+      expect(await cardsOf(ui)).toEqual(['💡 IDEAS: 1 waiting, app', '1. Split the importer by source'])
       expect(await ui.find({ key: 'work-0' })).toBeDefined()
       expect(lineBreakHint).toBeUndefined()
     }
@@ -144,7 +150,7 @@ test('the desktop app gets one Ideas pane: the field above the waiting ideas', a
   expect(disk.opened).toEqual(['idea', 'idea'])
 
   const ui = await $.ui.mount({ plugin: 'idea-shell', surface: 'desktop', ...CAPTURE })
-  expect(await ui.find({ type: 'Text', text: '2 waiting in app' })).toBeDefined()
+  expect((await cardsOf(ui))[0]).toBe('💡 IDEAS: 2 waiting, app')
   await ui.input({ key: 'idea', text: 'third' })
   expect(disk.files.get(FILE)).toBe('- first\n- second\n- third\n')
 

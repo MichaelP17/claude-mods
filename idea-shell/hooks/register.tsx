@@ -3,6 +3,8 @@ import type { ElementTable, EngineInterface, Register, RenderElement } from 'cla
 
 import type { HubCall, HubEntry } from './hub'
 import { formatIdeas, ideasFileOf, normalizeIdea, numberedList, parseIdeas, previewOf } from './ideas'
+import { buttonWidthOf, headerCard, ideaCards } from './look'
+import { cardWidthOf } from './svg'
 
 const CAPTURE_PANE = 'idea'
 const LIST_PANE = 'ideas'
@@ -133,19 +135,23 @@ async function openList($: EngineInterface): Promise<void> {
   await $.ui.open({ id: LIST_PANE, title: 'Ideas', focus: true, closeOnEscape: true })
 }
 
-type IdeasElements = Pick<ElementTable<'desktop'>, 'Box' | 'Button' | 'Text'> & { Input: ElementTable<'desktop'>['Input'] | null }
+type IdeasElements = Pick<ElementTable<'desktop'>, 'Box' | 'Button' | 'Svg' | 'Text'> & { Input: ElementTable<'desktop'>['Input'] | null }
 
-function drawIdeas($: EngineInterface, ui: IdeasElements, list: readonly string[], folder: string): RenderElement {
-  const { Box, Button, Input, Text } = ui
+const IDEA_LABELS = ['➤ Work on it', '✕']
+
+// The buttons lie over each card's right edge: the picture takes no presses.
+function drawIdeas($: EngineInterface, ui: IdeasElements, list: readonly string[], folder: string, width: number): RenderElement {
+  const { Box, Button, Input, Svg, Text } = ui
+  const header = headerCard({ width, eyebrow: '💡 IDEAS', title: list.length === 0 ? 'Nothing waiting' : `${list.length} waiting`, counter: folder })
 
   return (
     <Box flexDirection="column" rowGap={1}>
-      <Box flexDirection="row" justifyContent="space-between" alignItems="flex-end">
-        <Text bold>💡 Ideas</Text>
-        <Text dimColor>{list.length === 0 ? folder : `${list.length} waiting in ${folder}`}</Text>
-      </Box>
+      <Svg source={header.source} alt={header.alt} width={width} height={header.height} />
       {Input !== null && (
         <Box flexDirection="column">
+          <Text bold dimColor>
+            NEW IDEA
+          </Text>
           <Input
             key="idea"
             value=""
@@ -160,37 +166,20 @@ function drawIdeas($: EngineInterface, ui: IdeasElements, list: readonly string[
         </Box>
       )}
       {list.length === 0 ? (
-        <Box borderStyle="round" borderDimColor paddingX={1} justifyContent="center">
-          <Text dimColor>No ideas yet. The next one that crosses your mind goes in the field above.</Text>
-        </Box>
+        <Text dimColor>No ideas yet. The next one that crosses your mind goes in the field above.</Text>
       ) : (
         <Box flexDirection="column" rowGap={1}>
           <Text dimColor bold>
             WAITING
           </Text>
           {list.map((idea, index) => (
-            <Box
-              key={`card-${index}`}
-              flexDirection="row"
-              columnGap={2}
-              alignItems="center"
-              borderStyle="round"
-              borderDimColor
-              hover={{ borderColor: 'claude', borderDimColor: false }}
-              paddingX={1}
-            >
-              <Box flexGrow={1} flexShrink={1}>
-                <Text>{idea}</Text>
-              </Box>
-              <Box flexDirection="row" columnGap={1}>
-                <Button key={`work-${index}`} label="➤ Work on it" onPress={() => workOn($, idea)} />
-                <Button
-                  key={`delete-${index}`}
-                  dimColor
-                  hover={{ color: 'error', dimColor: false }}
-                  label="✕"
-                  onPress={() => removeIdea($, idea)}
-                />
+            <Box key={`card-${index}`} flexDirection="column">
+              {ideaCards(width, idea, index, buttonWidthOf(IDEA_LABELS)).map(card => (
+                <Svg source={card.source} alt={card.alt} width={width} height={card.height} />
+              ))}
+              <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
+                <Button key={`work-${index}`} label={IDEA_LABELS[0]} onPress={() => workOn($, idea)} />
+                <Button key={`delete-${index}`} dimColor label={IDEA_LABELS[1]} onPress={() => removeIdea($, idea)} />
               </Box>
             </Box>
           ))}
@@ -303,10 +292,10 @@ export const register: Register = on => {
       return <Text dimColor>This app draws no text field. /idea followed by the idea saves it.</Text>
     }
     if (e.surface !== 'terminal') {
-      const { Box, Button, Input, Text } = $.ui.resolve(e)
+      const { Box, Button, Input, Svg, Text } = $.ui.resolve(e)
 
       // Reading the list makes every save redraw the pane, which empties the field.
-      return drawIdeas($, { Box, Button, Input, Text }, await read($, ideas), folderNameOf(await $.session.root()))
+      return drawIdeas($, { Box, Button, Input, Svg, Text }, await read($, ideas), folderNameOf(await $.session.root()), cardWidthOf(e.props.bodyColumns))
     }
     // Reading the list makes every save redraw the pane, which empties the field.
     const count = (await read($, ideas)).length
@@ -334,7 +323,9 @@ export const register: Register = on => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, ideas)
     if (e.surface !== 'terminal') {
-      return drawIdeas($, { Box, Button, Input: null, Text }, list, folderNameOf(await $.session.root()))
+      const { Svg } = $.ui.resolve(e)
+
+      return drawIdeas($, { Box, Button, Input: null, Svg, Text }, list, folderNameOf(await $.session.root()), cardWidthOf(e.props.bodyColumns))
     }
     if (list.length === 0) {
       return <Text dimColor>No ideas for this folder. /idea captures one.</Text>
