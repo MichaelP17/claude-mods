@@ -56,7 +56,7 @@ Inside Claude Code:
 | `/snapshots` | A pane with all snapshots; selecting one shows its diff, a button rolls back after a second confirming press |
 | `/rollback <name>` | Opens the pane on that snapshot |
 
-In the desktop app the pane also says whether the config changed since the last snapshot and has a field that takes a snapshot: what you type becomes its message, and the name is derived from it as on the command line. **Compare** shows the changed files in the snapshot's own card, **Show full diff** every changed line.
+In the desktop app the pane also says whether the config changed since the last snapshot and has a field that takes a snapshot: what you type becomes its message, and the name is derived from it as on the command line. Each snapshot is a card with **Compare** laid over its right edge; **Compare** shows the changed files in a card beneath it, **Show full diff** every changed line, added ones green and removed ones red. **Roll back…** asks once more in a red card before it replaces anything.
 
 At session start a toast reports when the config changed since the last snapshot. Changes under `ideas/`, which `idea-shell` writes, do not count on their own; they are recorded with the next snapshot.
 

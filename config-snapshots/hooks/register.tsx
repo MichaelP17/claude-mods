@@ -3,7 +3,9 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Comparison, Snapshot } from '../types'
 import type { HubCall, HubEntry } from './hub'
-import { TONES, dotSvg, spinnerSvg } from './look'
+import { buttonWidthOf, diffCards, headerCard, noticeCard, snapshotCard, spinnerSvg } from './look'
+import type { Card } from './look'
+import { cardWidthOf } from './svg'
 import { hasConfigChanges } from './status'
 
 const PANE = 'config-snapshots'
@@ -200,34 +202,34 @@ export const register: Register = on => {
     const armed = await read($, isArmed)
     const running = await read($, isBusy)
     if (e.surface !== 'terminal' && e.surface !== 'mobile') {
-      const { Code, Input, Svg } = $.ui.resolve(e)
+      const { Input, Svg } = $.ui.resolve(e)
+      const width = cardWidthOf(e.props.bodyColumns)
       const newest = [...list].reverse()
       const compared = await read($, comparison)
       const message = await read($, notice)
       const changed = await read($, isChanged)
+      const drawCards = (cards: readonly Card[]) => cards.map(card => <Svg source={card.source} alt={card.alt} width={width} height={card.height} />)
       const spinner = (label: string) => (
         <Box flexDirection="row" columnGap={1} alignItems="center">
-          <Svg source={spinnerSvg()} alt={label} width={14} height={14} isInteractive />
+          <Svg source={spinnerSvg()} alt={label} width={16} height={16} />
           <Text dimColor>{label}</Text>
         </Box>
       )
+      const header = headerCard({
+        width,
+        eyebrow: '📸 CONFIG SNAPSHOTS',
+        title: changed === null ? 'Snapshots of ~/.claude' : changed ? 'Changed since the last snapshot' : 'Matches the last snapshot',
+        counter: `${list.length} ${list.length === 1 ? 'snapshot' : 'snapshots'}`,
+      })
 
+      // The buttons lie over the card's right edge: the picture takes no presses.
       return (
         <Box flexDirection="column" rowGap={1}>
-          <Box flexDirection="row" justifyContent="space-between" alignItems="flex-end">
-            <Box flexDirection="column">
-              <Text bold>📸 Config snapshots</Text>
-              <Text dimColor>{`${list.length} snapshots of ~/.claude`}</Text>
-            </Box>
-            {changed !== null && (
-              <Text {...(changed ? { color: 'warning' } : { color: 'success' })}>
-                {changed ? '● Changed since the last snapshot' : '✓ Matches the last snapshot'}
-              </Text>
-            )}
-          </Box>
-
-          <Box key="take" flexDirection="column" rowGap={1} borderStyle="round" borderColor={changed === true ? 'claude' : undefined} borderDimColor={changed !== true} paddingX={1}>
-            <Text bold>Take a snapshot</Text>
+          {drawCards([header])}
+          <Box flexDirection="column" rowGap={0}>
+            <Text bold dimColor>
+              {changed === true ? 'TAKE A SNAPSHOT · SOMETHING CHANGED' : 'TAKE A SNAPSHOT'}
+            </Text>
             <Input
               key="snapshot-name"
               value=""
@@ -240,7 +242,7 @@ export const register: Register = on => {
                 }
               }}
             />
-            {running && selected === null ? spinner('Recording…') : message.length > 0 && <Text dimColor>{message}</Text>}
+            {running && current === null ? spinner('Recording…') : message.length > 0 && <Text dimColor>{message}</Text>}
           </Box>
 
           {newest.length > 0 && (
@@ -251,40 +253,29 @@ export const register: Register = on => {
           {newest.map(snapshot => {
             const isSelected = snapshot.name === current
             const result = isSelected && compared?.name === snapshot.name ? compared : null
+            const labels = isSelected && !armed ? ['⇄ Compare', '↶ Roll back…'] : ['⇄ Compare']
+            const card = snapshotCard(width, snapshot, { isSelected, isArmed: armed, reserve: buttonWidthOf(labels) })
 
             return (
-              <Box
-                key={`card-${snapshot.name}`}
-                flexDirection="column"
-                rowGap={1}
-                borderStyle="round"
-                {...(isSelected ? { borderColor: armed ? 'error' : 'claude' } : { borderDimColor: true })}
-                hover={{ borderColor: armed && isSelected ? 'error' : 'claude', borderDimColor: false }}
-                paddingX={1}
-              >
-                <Box flexDirection="row" columnGap={2} alignItems="center">
-                  <Svg source={dotSvg(isSelected ? TONES.accent : TONES.neutral, false)} alt={isSelected ? 'selected' : 'snapshot'} width={14} height={14} />
-                  <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-                    <Text bold>{snapshot.message.length > 0 ? snapshot.message : snapshot.name}</Text>
-                    <Text dimColor>{`${snapshot.createdAt} · ${snapshot.name}`}</Text>
-                  </Box>
-                  <Box flexDirection="row" columnGap={1}>
+              <Box key={`card-${snapshot.name}`} flexDirection="column" rowGap={1}>
+                <Box flexDirection="column">
+                  {drawCards([card])}
+                  <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
                     <Button key={`select-${snapshot.name}`} {...(isSelected ? {} : { dimColor: true })} label="⇄ Compare" onPress={() => selectSnapshot($, snapshot.name)} />
                     {isSelected && !armed && <Button key="arm" hover={{ color: 'error' }} label="↶ Roll back…" onPress={() => update($, isArmed, () => true)} />}
                   </Box>
                 </Box>
                 {isSelected && running && spinner('Comparing with the current config…')}
-                {result !== null && !running && (
-                  <Box flexDirection="column" rowGap={1}>
-                    {result.text.trim().length === 0 ? (
-                      <Text color="success">✓ Nothing changed since this snapshot</Text>
-                    ) : (
-                      <Box flexDirection="column">
-                        <Text dimColor>{result.isFull ? 'Every change since this snapshot' : 'Changed since this snapshot'}</Text>
-                        <Code source={result.text} {...(result.isFull ? { language: 'diff' } : {})} wrap="truncate-end" />
-                      </Box>
-                    )}
-                    {result.text.trim().length > 0 && (
+                {result !== null &&
+                  !running &&
+                  (result.text.trim().length === 0 ? (
+                    <Text color="success">✓ Nothing changed since this snapshot</Text>
+                  ) : (
+                    <Box flexDirection="column" rowGap={1}>
+                      <Text bold dimColor>
+                        {result.isFull ? 'EVERY CHANGE SINCE THIS SNAPSHOT' : 'CHANGED SINCE THIS SNAPSHOT'}
+                      </Text>
+                      {drawCards(diffCards(width, result.text, result.text))}
                       <Box flexDirection="row">
                         <Button
                           key="full-diff"
@@ -293,12 +284,11 @@ export const register: Register = on => {
                           onPress={() => compare($, snapshot.name, !result.isFull)}
                         />
                       </Box>
-                    )}
-                  </Box>
-                )}
+                    </Box>
+                  ))}
                 {isSelected && armed && (
                   <Box flexDirection="column" rowGap={1}>
-                    <Text color="error">{`Replace the current config with ${snapshot.name}? Claude Code loads it after a restart.`}</Text>
+                    {drawCards(noticeCard(width, 'card-error', `Roll back to ${snapshot.name}?`, 'The current config is replaced by this snapshot. Claude Code loads it after a restart.'))}
                     <Box flexDirection="row" columnGap={1}>
                       <Button key="confirm" variant="primary" label={`Roll back to ${snapshot.name}`} onPress={() => rollBack($, snapshot.name)} />
                       <Button key="cancel" label="Cancel" onPress={() => update($, isArmed, () => false)} />

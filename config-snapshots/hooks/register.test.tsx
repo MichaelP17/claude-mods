@@ -41,7 +41,8 @@ test('rollback needs a second, confirming press', async ($, on) => {
 
     await ui.press({ key: 'select-baseline' })
     expect(calls).toContainEqual(['diff', 'baseline'])
-    expect(await ui.find({ type: surface === 'terminal' ? 'Text' : 'Code', text: /ran diff baseline/ })).toBeDefined()
+    const shown = [...(await ui.findAll({ type: 'Text' })).map(i => i.text), ...(await ui.findAll({ type: 'Svg' })).map(i => String(i.props.alt))]
+    expect(shown.some(i => /ran diff baseline/.test(i))).toBe(true)
 
     await ui.press({ key: 'arm' })
     expect(calls.some(i => i[0] === 'rollback')).toBe(false)
@@ -73,7 +74,7 @@ test('the desktop pane takes a snapshot from its field and compares one in its c
   expect(await ui.find({ type: 'Text', text: 'ran snapshot Before the new plugin' })).toBeDefined()
 
   await ui.press({ key: 'select-baseline' })
-  expect(await ui.find({ type: 'Code', text: /settings\.json/ })).toBeDefined()
+  expect((await ui.findAll({ type: 'Svg' })).some(i => /settings\.json/.test(String(i.props.alt)))).toBe(true)
   await ui.press({ key: 'full-diff' })
   expect(calls).toContainEqual(['diff', 'baseline', '--full'])
 

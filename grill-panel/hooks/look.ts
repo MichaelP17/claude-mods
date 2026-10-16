@@ -4,7 +4,7 @@ import type { Choice } from './rounds'
 import { EYEBROW, LINE, PAD, SIZE, blockSections, cards, escape, eyebrowSvg, eyebrowWidth, fitText, frame, parseBlocks, parseInline, plainOf, svgDocument, textSection, textWidth } from './svg'
 import type { Card, Section, Variant } from './svg'
 
-export { headerCard } from './svg'
+export { headerCard, noticeCard } from './svg'
 export type { Card, Segment } from './svg'
 
 type ChoiceState = 'plain' | 'recommended' | 'chosen'
@@ -138,14 +138,6 @@ export function reviewCard(width: number, index: number, question: Question, ans
       ].join(''),
     ),
   }
-}
-
-export function noticeCard(width: number, variant: 'card-warning' | 'card-error', title: string, text: string): Card[] {
-  const inner = width - 2 * PAD
-  const body = textSection([{ text }], PAD, inner, { tone: 'muted' })
-  const sections = [textSection([{ text: title, isBold: true }], PAD, inner, { size: 15 }), { height: body.height + 6, draw: (y: number) => body.draw(y + 6) }]
-
-  return cards(width, variant, sections, `${title} ${text}`)
 }
 
 export function sendingCard(width: number): Card {

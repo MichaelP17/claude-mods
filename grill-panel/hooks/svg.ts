@@ -17,7 +17,7 @@ export const MONO = 'ui-monospace,SFMono-Regular,Menlo,monospace'
 // Classes rather than colors: drawn as an image the SVG follows the light or
 // dark color scheme by itself, which a color handed in from the hook could not.
 export const STYLE = `<style>
-text{font-family:${SANS};white-space:pre}
+text{font-family:${SANS};white-space:pre}.mono{font-family:${MONO}}
 .card{fill:#f7f6f3;stroke:#e5e3de}.card-accent{fill:#fbf1ec;stroke:#e7b49c}.card-success{fill:#f1f8f3;stroke:#a9d6b8}
 .card-warning{fill:#fcf6e6;stroke:#e6cf8a}.card-error{fill:#fcefee;stroke:#e8aaa6}
 .tile{fill:#ffffff;stroke:#e5e3de}.tile-accent{fill:#ffffff;stroke:#d97757}.tile-success{fill:#ffffff;stroke:#2e9e5b}
@@ -509,4 +509,38 @@ export function headerCard(card: { width: number; eyebrow: string; title: string
   ]
 
   return { height, alt: `${card.eyebrow}: ${plainOf(card.title)}, ${card.counter}`, source: svgDocument(width, height, body.join('')) }
+}
+
+export function noticeCard(width: number, variant: 'card-warning' | 'card-error', title: string, text: string): Card[] {
+  const inner = width - 2 * PAD
+  const body = textSection([{ text }], PAD, inner, { tone: 'muted' })
+  const sections = [textSection([{ text: title, isBold: true }], PAD, inner, { size: 15 }), { height: body.height + 6, draw: (y: number) => body.draw(y + 6) }]
+
+  return cards(width, variant, sections, `${title} ${text}`)
+}
+
+// A diff or a list of changes in the code font: added lines green, removed
+// ones red, hunk heads in the accent color. Long lines are cut, not wrapped,
+// so the columns stay aligned.
+export function diffCards(width: number, text: string, alt: string): Card[] {
+  const size = 12
+  const lineHeight = 17
+  const maxWidth = width - 2 * PAD
+  const rows = text.replace(/\s+$/u, '').split('\n')
+  const toneOf = (row: string) =>
+    /^\+(?!\+\+)/u.test(row) ? 'success' : /^-(?!--)/u.test(row) ? 'error' : /^@@/u.test(row) ? 'accent' : /^(diff |index |\+\+\+|---)/u.test(row) ? 'muted' : 't'
+  const sections: Section[] = rows.map(row => ({
+    height: lineHeight,
+    draw: y =>
+      `<text class="${toneOf(row)} mono" x="${PAD}" y="${(y + lineHeight * 0.75).toFixed(1)}" font-size="${size}">${escape(fitMono(row, maxWidth, size))}</text>`,
+  }))
+
+  return cards(width, 'card', sections, alt)
+}
+
+function fitMono(text: string, maxWidth: number, size: number): string {
+  const chars = Array.from(text.replace(/\t/gu, '  '))
+  const fits = Math.floor(maxWidth / (size * 0.62))
+
+  return chars.length <= fits ? chars.join('') : `${chars.slice(0, Math.max(1, fits - 1)).join('')}…`
 }
