@@ -1,6 +1,6 @@
 // An SVG drawn as an image cannot lay out text: no wrapping, no Markdown, no
-// measuring. This module does that by estimate, so the cards in look.ts can
-// show a question as the conversation would.
+// measuring. This module does that by estimate and stacks the result into
+// cards. Every mod with desktop cards carries the same copy of this file.
 
 export type Run = { text: string; isBold?: boolean; isItalic?: boolean; isCode?: boolean; isLink?: boolean }
 
@@ -26,6 +26,8 @@ text{font-family:${SANS};white-space:pre}
 .badge{fill:#ecebe7}.badge-t{fill:#4a4844}.codebg{fill:#efede8}.rule{fill:#dad7d0}.pill{fill:#f6e1d7}.pill-success{fill:#dcefe2}
 .open{fill:#e4e2dc}.answered{fill:#2e9e5b}.skipped{fill:#d4a017}.current{fill:#d97757}
 .current,.pulse{animation:pulse 1.8s ease-in-out infinite}@keyframes pulse{50%{opacity:.5}}
+.ripple{transform-box:fill-box;transform-origin:center;animation:ripple 2.4s ease-out infinite}@keyframes ripple{0%{transform:scale(1);opacity:.45}100%{transform:scale(2.8);opacity:0}}
+.spin{transform-box:fill-box;transform-origin:center;animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 .dot{animation:dot 1.2s ease-in-out infinite}.dot2{animation-delay:.2s}.dot3{animation-delay:.4s}@keyframes dot{0%,80%,100%{opacity:.25}40%{opacity:1}}
 @media (prefers-color-scheme: dark){
 .card{fill:#262625;stroke:#363632}.card-accent{fill:#2e2420;stroke:#7a4a36}.card-success{fill:#1f2a23;stroke:#2f5a3d}
@@ -35,7 +37,7 @@ text{font-family:${SANS};white-space:pre}
 .success{fill:#4cc27a}.warning{fill:#e2b33c}.error{fill:#e8746a}.accent{fill:#e08a6a}.on-accent{fill:#1f1e1d}
 .badge{fill:#34342f}.badge-t{fill:#d6d4cf}.codebg{fill:#1c1c1b}.rule{fill:#45443f}.pill{fill:#4a3328}.pill-success{fill:#24432f}
 .open{fill:#3a3a37}.answered{fill:#3fb36b}.skipped{fill:#d4a017}.current{fill:#e08a6a}}
-@media (prefers-reduced-motion: reduce){.current,.pulse,.dot{animation:none}}
+@media (prefers-reduced-motion: reduce){.current,.pulse,.dot,.ripple,.spin{animation:none}}
 </style>`
 
 // Widths are estimated from the font size, on the wide side: a line then ends
@@ -318,6 +320,187 @@ export function lineSvg(runs: readonly Run[], x: number, y: number, size: number
   return `<text x="${x}" y="${y.toFixed(1)}" font-size="${size}">${spans.join('')}</text>`
 }
 
+// A pane reports its width in columns only; about 8 CSS pixels each, as
+// savvy-progress measures it, minus the pane's own inset.
+export function cardWidthOf(columns: number): number {
+  return Math.max(240, Math.min(900, (columns || 40) * 8 - 8))
+}
+
 export function svgDocument(width: number, height: number, body: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${STYLE}${body}</svg>`
+}
+
+export type Segment = 'answered' | 'skipped' | 'current' | 'open'
+
+export type Card = { source: string; height: number; alt: string }
+
+export type Variant = 'card' | 'card-accent' | 'card-success' | 'card-warning' | 'card-error'
+
+export type Section = { height: number; draw: (y: number) => string }
+
+export const PAD = 18
+export const SIZE = 14
+export const LINE = 21
+export const EYEBROW = 11
+export const RADIUS = 14
+
+// The engine refuses an Svg taller than 4096 pixels; a longer card is cut
+// between sections into several cards of the same look.
+export const MAX_HEIGHT = 4000
+
+export function baseline(y: number, line: number, lineHeight = LINE): number {
+  return y + line * lineHeight + lineHeight * 0.72
+}
+
+export function frame(width: number, height: number, variant: Variant): string {
+  return `<rect class="${variant}" x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="${RADIUS}"/>`
+}
+
+export function eyebrowSvg(text: string, x: number, y: number, tone = 'eyebrow', anchor = 'start'): string {
+  return `<text class="${tone}" x="${x}" y="${y}" font-size="${EYEBROW}" font-weight="700" letter-spacing="1.1" text-anchor="${anchor}">${escape(text)}</text>`
+}
+
+export function eyebrowWidth(text: string): number {
+  return textWidth(text, EYEBROW, true) + text.length * 1.1
+}
+
+export function textSection(
+  runs: readonly Run[],
+  x: number,
+  maxWidth: number,
+  options: { tone?: string; size?: number; maxLines?: number; weight?: number; firstWidth?: number } = {},
+): Section {
+  const size = options.size ?? SIZE
+  const lineHeight = Math.round(size * 1.5)
+  const wrapped = wrapRuns(runs, maxWidth, size, options.firstWidth)
+  const lines = options.maxLines === undefined ? wrapped : clampLines(wrapped, options.maxLines, maxWidth, size)
+
+  return {
+    height: lines.length * lineHeight,
+    draw: y => lines.map((line, index) => lineSvg(line, x, baseline(y, index, lineHeight), size, options.tone, options.weight)).join(''),
+  }
+}
+
+export function codeSection(lines: readonly string[], x: number, maxWidth: number): Section {
+  const size = 12.5
+  const lineHeight = 18
+  const perLine = Math.max(8, Math.floor((maxWidth - 24) / (size * 0.62)))
+  const rows = lines.flatMap(line => {
+    const chars = Array.from(line)
+    const pieces: string[] = []
+    for (let index = 0; index < Math.max(1, chars.length); index += perLine) {
+      pieces.push(chars.slice(index, index + perLine).join(''))
+    }
+
+    return pieces
+  })
+
+  return {
+    height: rows.length * lineHeight + 20,
+    draw: y =>
+      `<rect class="codebg" x="${x}" y="${y}" width="${maxWidth}" height="${rows.length * lineHeight + 20}" rx="8"/>` +
+      rows.map((row, index) => lineSvg([{ text: row, isCode: true }], x + 12, baseline(y + 10, index, lineHeight), size / 0.92)).join(''),
+  }
+}
+
+export function blockSection(block: Block, x: number, maxWidth: number): Section {
+  switch (block.kind) {
+    case 'code':
+      return codeSection(block.lines, x, maxWidth)
+    case 'heading':
+      return textSection(block.runs, x, maxWidth, { size: SIZE + 1.5, weight: 650 })
+    case 'quote': {
+      const text = textSection(block.runs, x + 14, maxWidth - 14, { tone: 'muted' })
+
+      return { height: text.height, draw: y => `<rect class="rule" x="${x}" y="${y + 2}" width="3" height="${text.height - 4}" rx="1.5"/>${text.draw(y)}` }
+    }
+    case 'item': {
+      const indent = block.marker === '•' ? 16 : textWidth(block.marker, SIZE) + 8
+      const text = textSection(block.runs, x + indent, maxWidth - indent)
+
+      return {
+        height: text.height,
+        draw: y => `<text class="muted" x="${x + (block.marker === '•' ? 3 : 0)}" y="${baseline(y, 0).toFixed(1)}" font-size="${SIZE}">${escape(block.marker)}</text>${text.draw(y)}`,
+      }
+    }
+    default:
+      return textSection(block.runs, x, maxWidth)
+  }
+}
+
+// Paragraphs sit further apart than the items of one list.
+export function blockSections(blocks: readonly Block[], x: number, maxWidth: number): Section[] {
+  return blocks.map((block, index) => {
+    const section = blockSection(block, x, maxWidth)
+    const previous = blocks[index - 1]
+    const spacing = index === 0 ? 0 : previous?.kind === 'item' && block.kind === 'item' ? 4 : 10
+
+    return { height: section.height + spacing, draw: y => section.draw(y + spacing) }
+  })
+}
+
+// Stacks sections inside one frame; past MAX_HEIGHT the rest go on in a next one.
+export function cards(width: number, variant: Variant, sections: readonly Section[], alt: string, decoration = ''): Card[] {
+  const result: Card[] = []
+  let pending: Section[] = []
+  let used = 2 * PAD
+  const close = () => {
+    if (pending.length === 0) {
+      return
+    }
+    let y = PAD
+    const body = pending.map(section => {
+      const drawn = section.draw(y)
+      y += section.height
+
+      return drawn
+    })
+    const height = Math.ceil(y + PAD)
+    result.push({ height, alt, source: svgDocument(width, height, frame(width, height, variant) + (result.length === 0 ? decoration : '') + body.join('')) })
+    pending = []
+    used = 2 * PAD
+  }
+  for (const section of sections) {
+    if (pending.length > 0 && used + section.height > MAX_HEIGHT) {
+      close()
+    }
+    pending.push(section)
+    used += section.height
+  }
+  close()
+
+  return result
+}
+
+export const GLOW =
+  '<defs><linearGradient id="glow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d97757" stop-opacity="0.14"/><stop offset="0.55" stop-color="#d97757" stop-opacity="0"/></linearGradient></defs>'
+
+// The card heading a pane: an eyebrow, a count at the right, a title of up
+// to two lines and, given segments, a bar with one segment per step.
+export function headerCard(card: { width: number; eyebrow: string; title: string; counter: string; segments?: readonly Segment[] }): Card {
+  const { width } = card
+  const segments = card.segments ?? []
+  const inner = width - 2 * PAD
+  const counterWidth = textWidth(card.counter, 12)
+  const eyebrow = fitText(card.eyebrow, inner - counterWidth - 16, EYEBROW, true)
+  const title = textSection(parseInline(card.title).map(i => ({ ...i, isBold: true })), PAD, inner, { size: 17, maxLines: 2 })
+  const titleTop = PAD + EYEBROW + 8
+  const barY = titleTop + title.height + 12
+  const height = segments.length === 0 ? titleTop + title.height + PAD - 4 : barY + 6 + PAD
+  const count = Math.max(1, segments.length)
+  const segmentWidth = (inner - 4 * (count - 1)) / count
+  const bars = segments.map(
+    (segment, index) => `<rect class="${segment}" x="${(PAD + index * (segmentWidth + 4)).toFixed(1)}" y="${barY}" width="${segmentWidth.toFixed(1)}" height="6" rx="3"/>`,
+  )
+  const body = [
+    frame(width, height, 'card'),
+    GLOW,
+    `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="${RADIUS}" fill="url(#glow)"/>`,
+    eyebrowSvg(eyebrow, PAD, PAD + EYEBROW),
+    `<text class="muted" x="${width - PAD}" y="${PAD + EYEBROW}" font-size="12" text-anchor="end">${escape(card.counter)}</text>`,
+    title.draw(titleTop),
+    ...bars,
+  ]
+
+  return { height, alt: `${card.eyebrow}: ${plainOf(card.title)}, ${card.counter}`, source: svgDocument(width, height, body.join('')) }
 }

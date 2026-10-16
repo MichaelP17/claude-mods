@@ -1,5 +1,17 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { ElementQuery, FoundElement } from 'claude-code/testing'
+
+type Drawn = { findAll: (query: ElementQuery) => Promise<FoundElement[]> }
+
+// The terminal writes a service as text; the desktop draws it as a card whose
+// alt text says the same.
+async function shows(ui: Drawn, pattern: RegExp): Promise<boolean> {
+  const texts = await ui.findAll({ type: 'Text' })
+  const cards = await ui.findAll({ type: 'Svg' })
+
+  return [...texts.map(i => i.text), ...cards.map(i => String(i.props.alt))].some(i => pattern.test(i))
+}
 
 const PANE = {
   component: 'Pane',
@@ -51,7 +63,7 @@ test('a detached compose stack is tracked, shown and stopped from the pane', asy
   await $.command.run({ command: 'services', args: '', ...RUN })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'service-radar', surface, ...PANE })
-    expect(await ui.find({ type: 'Text', text: /docker compose: app/ })).toBeDefined()
+    expect(await shows(ui, /docker compose: app/)).toBe(true)
     await ui.unmount()
   }
 
@@ -167,7 +179,7 @@ test('a service Claude starts while /services checks the list is kept', async ($
   await opening
 
   const ui = await $.ui.mount({ plugin: 'service-radar', surface: 'desktop', ...PANE })
-  expect(await ui.find({ type: 'Text', text: /docker compose: app/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /docker compose: web/ })).toBeDefined()
+  expect(await shows(ui, /docker compose: app/)).toBe(true)
+  expect(await shows(ui, /docker compose: web/)).toBe(true)
   await ui.unmount()
 })

@@ -8,7 +8,7 @@ Claude Code already lists its own background shells and subagents. What it does 
 | --- | --- |
 | Nothing Claude started is running | nothing |
 | Something is running | `🐳 2` in the footer under the prompt; in the desktop app a click on it opens the pane, also while Claude is working |
-| You want details | `/services` opens a pane: name, folder, start time, a **Stop** button per service, **Stop all**, **Refresh** |
+| You want details | `/services` opens a pane: name, folder, start time, a **Stop** button per service, **Stop all**, **Refresh**. In the desktop app each service is a card with a pulsing status dot and how long it has been running, its buttons laid over the card's right edge |
 | `/clear` while something runs | a dialog listing the services: **Stop all** or **Keep running** |
 | A new session starts while services from an earlier one still run | a toast pointing to `/services` |
 

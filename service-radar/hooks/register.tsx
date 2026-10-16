@@ -4,7 +4,8 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Service } from '../types'
 import { detectServices, isRunning, mayStopServices } from './detect'
 import type { HubCall, HubEntry } from './hub'
-import { TONES, dotSvg, spinnerSvg } from './look'
+import { buttonWidthOf, clockTime, headerCard, serviceCard, shortPath } from './look'
+import { cardWidthOf } from './svg'
 
 const PANE = 'service-radar'
 const STORE_KEY = 'services'
@@ -187,16 +188,6 @@ async function forget($: EngineInterface, id: string): Promise<void> {
   await saveServices($, (await loadServices($)).filter(i => i.id !== id))
 }
 
-function shortPath(path: string, home: string | undefined): string {
-  return home !== undefined && path.startsWith(home) ? `~${path.slice(home.length)}` : path
-}
-
-function clockTime(timestamp: number): string {
-  const date = new Date(timestamp)
-
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'services', description: 'Show the services Claude started and stop them', immediate: true })
@@ -281,58 +272,41 @@ export const register: Register = on => {
     const home = await $.env.get('HOME')
     if (e.surface !== 'terminal') {
       const { Svg } = $.ui.resolve(e)
+      const width = cardWidthOf(e.props.bodyColumns)
+      const now = await $.clock.now()
+      const header = headerCard({
+        width,
+        eyebrow: '🐳 SERVICES',
+        title: list.length === 0 ? 'Nothing running' : `${list.length} running`,
+        counter: running ? 'working…' : 'started by Claude',
+      })
 
+      // The buttons lie over the card's right edge: the picture takes no
+      // presses, and a row of its own beneath each card would double the list.
       return (
         <Box flexDirection="column" rowGap={1}>
-          <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-            <Box flexDirection="column">
-              <Text bold>🐳 Services</Text>
-              <Text dimColor>{list.length === 0 ? 'Nothing Claude started is running' : `${list.length} started by Claude, still running`}</Text>
-            </Box>
-            <Box flexDirection="row" columnGap={1} alignItems="center">
-              {running && <Svg source={spinnerSvg()} alt="working" width={14} height={14} isInteractive />}
-              <Button key="refresh" dimColor label="↻ Refresh" onPress={() => inBackground($, async () => `${(await refresh($)).length} running`)} />
-            </Box>
-          </Box>
-          {list.map(service => (
-            <Box
-              key={`card-${service.id}`}
-              flexDirection="row"
-              columnGap={2}
-              alignItems="center"
-              borderStyle="round"
-              borderDimColor
-              hover={{ borderColor: 'claude', borderDimColor: false }}
-              paddingX={1}
-            >
-              <Svg
-                source={dotSvg(service.check === null ? TONES.warning : TONES.success, service.check !== null)}
-                alt={service.check === null ? 'state unknown' : 'running'}
-                width={14}
-                height={14}
-                isInteractive
-              />
-              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-                <Text bold>{service.label}</Text>
-                <Text dimColor>{`${shortPath(service.cwd, home)} · since ${clockTime(service.startedAt)}${service.check === null ? ' · not checkable' : ''}`}</Text>
+          <Svg source={header.source} alt={header.alt} width={width} height={header.height} />
+          {list.map(service => {
+            const labels = service.check === null ? ['Forget', '■ Stop'] : ['■ Stop']
+            const card = serviceCard(width, service, { home, now, reserve: buttonWidthOf(labels) })
+
+            return (
+              <Box key={`card-${service.id}`} flexDirection="column">
+                <Svg source={card.source} alt={card.alt} width={width} height={card.height} />
+                <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
+                  {service.check === null && <Button key={`forget-${service.id}`} dimColor label="Forget" onPress={() => forget($, service.id)} />}
+                  <Button key={`stop-${service.id}`} hover={{ color: 'error' }} label="■ Stop" onPress={() => inBackground($, () => stopService($, service))} />
+                </Box>
               </Box>
-              <Box flexDirection="row" columnGap={1}>
-                {service.check === null && <Button key={`forget-${service.id}`} dimColor label="Forget" onPress={() => forget($, service.id)} />}
-                <Button
-                  key={`stop-${service.id}`}
-                  hover={{ color: 'error' }}
-                  label="■ Stop"
-                  onPress={() => inBackground($, () => stopService($, service))}
-                />
-              </Box>
-            </Box>
-          ))}
+            )
+          })}
           {!running && text.length > 0 && <Text color="claude">{text}</Text>}
-          {list.length > 1 && (
-            <Box flexDirection="row">
+          <Box flexDirection="row" columnGap={1}>
+            <Button key="refresh" dimColor label="↻ Refresh" onPress={() => inBackground($, async () => `${(await refresh($)).length} running`)} />
+            {list.length > 1 && (
               <Button key="stop-all" hover={{ scope: 'stop-all', color: 'error' }} label="■ Stop all" onPress={() => inBackground($, () => stopAll($))} />
-            </Box>
-          )}
+            )}
+          </Box>
         </Box>
       )
     }

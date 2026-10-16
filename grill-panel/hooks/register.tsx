@@ -28,6 +28,7 @@ import {
 } from './rounds'
 import { headerCard, noticeCard, previewCard, questionCards, recommendationCards, reviewCard, sendingCard } from './look'
 import type { Card, Segment } from './look'
+import { cardWidthOf } from './svg'
 
 const PANE = 'grill'
 const TITLE = 'Grill'
@@ -337,12 +338,6 @@ function drawStep($: EngineInterface, ui: RemoteElements, value: Round, index: n
   }
 
   return <Button key={`goto-${index}`} dimColor label={number} onPress={e => press(e.surface)} />
-}
-
-// The pane reports its width in columns only; about 8 CSS pixels each, as
-// savvy-progress measures it, minus the pane's own inset.
-function cardWidthOf(columns: number): number {
-  return Math.max(240, Math.min(900, (columns || 40) * 8 - 8))
 }
 
 function segmentsOf(value: Round): Segment[] {
