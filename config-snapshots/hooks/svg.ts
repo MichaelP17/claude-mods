@@ -544,3 +544,11 @@ function fitMono(text: string, maxWidth: number, size: number): string {
 
   return chars.length <= fits ? chars.join('') : `${chars.slice(0, Math.max(1, fits - 1)).join('')}…`
 }
+
+// An eyebrow line heading a card, with an optional second one at its right.
+export function eyebrowSection(left: string, right: string | null, rightTone: string, width: number): Section {
+  return {
+    height: EYEBROW + 10,
+    draw: y => eyebrowSvg(left, PAD, y + EYEBROW) + (right === null ? '' : eyebrowSvg(right, width - PAD, y + EYEBROW, rightTone, 'end')),
+  }
+}
