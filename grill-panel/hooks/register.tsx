@@ -7,8 +7,6 @@ import {
   FORMAT_CONTRACT,
   answerCurrent,
   answerOf,
-  choiceAnswerOf,
-  choicePartsOf,
   choicesOf,
   editAt,
   footerOf,
@@ -22,12 +20,10 @@ import {
   parseQuestions,
   prefillRecommendation,
   previewOf,
-  recommendedLetterOf,
   resume,
   roundKeyOf,
   skipCurrent,
 } from './rounds'
-import type { Choice } from './rounds'
 import { ringSvg } from './look'
 
 const PANE = 'grill'
@@ -123,45 +119,18 @@ function fieldOf(value: Round): string {
   return `answer-${value.current}`
 }
 
-function chosenOf(value: Round, options: readonly Choice[]): number {
-  const answer = value.answers[value.current] ?? null
-
-  return answer?.kind === 'text' ? options.findIndex(i => choiceAnswerOf(i) === answer.text) : -1
-}
-
-function recommendedOf(question: Question, options: readonly Choice[]): number {
-  const letter = recommendedLetterOf(question.recommendation)
-
-  return options.findIndex(i => i.letter === letter)
-}
-
-// Where the desktop's ring starts on a question, so Enter alone takes what the
-// panel suggests: the answer given before, else the recommendation.
+// Where the desktop's ring starts on a question, so Enter alone takes the
+// recommendation unless an answer was typed before.
 function startOf(value: Round): string {
   const question = value.questions[value.current]
   if (value.mode === 'review') {
     return 'send'
   }
-  if (question === undefined || value.prefill !== null) {
+  if (question === undefined || value.prefill !== null || value.answers[value.current]?.kind === 'text') {
     return fieldOf(value)
-  }
-  const { options } = choicesOf(question.body)
-  const chosen = chosenOf(value, options)
-  if (chosen !== -1) {
-    return `choice-${chosen}`
-  }
-  if (value.answers[value.current]?.kind === 'text') {
-    return fieldOf(value)
-  }
-  const recommended = recommendedOf(question, options)
-  if (recommended !== -1) {
-    return `choice-${recommended}`
-  }
-  if (question.recommendation !== null) {
-    return 'accept-recommendation'
   }
 
-  return options.length > 0 ? 'choice-0' : fieldOf(value)
+  return question.recommendation === null ? fieldOf(value) : 'accept-recommendation'
 }
 
 // The terminal keeps its one field, so the ring stays on it there.
@@ -387,42 +356,6 @@ function drawHeader(ui: RemoteElements, eyebrow: string, title: string, done: nu
   )
 }
 
-// A Button holds strings and Text only, so the parts are gathered without the
-// `false` a conditional in JSX would leave among them. On the filled primary
-// button an accent color would vanish, so its parts keep the button's own.
-function drawChoice($: EngineInterface, ui: RemoteElements, choice: Choice, index: number, state: { isRecommended: boolean; isChosen: boolean; isPrimary: boolean; isStart: boolean }): RenderElement {
-  const { Box, Button, Text } = ui
-  const { head, rest } = choicePartsOf(choice)
-  const tone = (color: 'success' | 'claude') => (state.isPrimary ? {} : { color })
-  const parts: (string | RenderElement)[] = [
-    <Text bold {...tone(state.isChosen ? 'success' : 'claude')}>{`${choice.letter.toUpperCase()}   `}</Text>,
-    head.length > 0 ? <Text bold>{head}</Text> : rest,
-  ]
-  if (state.isChosen) {
-    parts.push(<Text {...tone('success')}>{'   ✓ Chosen'}</Text>)
-  } else if (state.isRecommended) {
-    parts.push(<Text {...tone('claude')}>{'   ★ Recommended'}</Text>)
-  }
-
-  return (
-    <Box key={`choice-row-${index}`} flexDirection="column" alignItems="stretch" rowGap={0}>
-      <Button
-        key={`choice-${index}`}
-        {...(state.isPrimary ? { variant: 'primary' as const } : {})}
-        {...(state.isStart ? { autoFocus: true as const } : {})}
-        onPress={e => submit($, choiceAnswerOf(choice), e.surface)}
-      >
-        {parts}
-      </Button>
-      {head.length > 0 && rest.length > 0 && (
-        <Box paddingX={2}>
-          <Text dimColor>{rest}</Text>
-        </Box>
-      )}
-    </Box>
-  )
-}
-
 // The desktop and the editor draw native controls and borders, so the terminal's
 // glyph lists and key hints give way to steps, cards and buttons there.
 function drawRemote($: EngineInterface, ui: RemoteElements, value: Round, typed: Draft | null): RenderElement {
@@ -477,12 +410,10 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
   }
   const total = value.questions.length
   const answer = value.answers[value.current] ?? null
-  const choices = choicesOf(question.body)
-  const recommended = recommendedOf(question, choices.options)
-  const chosen = chosenOf(value, choices.options)
+  const hasChoices = choicesOf(question.body).options.length > 0
   const start = startOf(value)
   const field = fieldOf(value)
-  const fieldValue = value.prefill ?? (answer?.kind === 'text' && chosen === -1 ? answer.text : '')
+  const fieldValue = value.prefill ?? (answer?.kind === 'text' ? answer.text : '')
   const shown = typed?.field === field ? typed.text : fieldValue
 
   return (
@@ -497,20 +428,7 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
       <Box flexDirection="row" columnGap={1} flexWrap="wrap">
         {value.questions.map((_, index) => drawStep($, ui, value, index))}
       </Box>
-      {choices.lead.length > 0 && <Markdown text={choices.lead} />}
-      {choices.options.length > 0 && (
-        <Box flexDirection="column" rowGap={1}>
-          {choices.options.map((choice, index) =>
-            drawChoice($, ui, choice, index, {
-              isRecommended: index === recommended,
-              isChosen: index === chosen,
-              isPrimary: index === (chosen === -1 ? recommended : chosen),
-              isStart: start === `choice-${index}`,
-            }),
-          )}
-        </Box>
-      )}
-      {choices.trail.length > 0 && <Markdown text={choices.trail} />}
+      {question.body.length > 0 && <Markdown text={question.body} />}
       {question.recommendation !== null && (
         <Box key="recommendation" flexDirection="column" rowGap={0} borderStyle="round" borderColor="claude" paddingX={2}>
           <Text bold color="claude">
@@ -518,27 +436,25 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
           </Text>
           <Markdown text={question.recommendation} />
           <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-            {recommended === -1 && (
-              <Button
-                key="accept-recommendation"
-                variant="primary"
-                {...(start === 'accept-recommendation' ? { autoFocus: true as const } : {})}
-                label={answer?.kind === 'recommendation' ? '✓ Accepted' : '✓ Accept'}
-                onPress={e => submit($, '', e.surface)}
-              />
-            )}
+            <Button
+              key="accept-recommendation"
+              variant="primary"
+              {...(start === 'accept-recommendation' ? { autoFocus: true as const } : {})}
+              label={answer?.kind === 'recommendation' ? '✓ Accepted' : '✓ Accept'}
+              onPress={e => submit($, '', e.surface)}
+            />
             <Button key="edit-recommendation" label="✎ Edit before saving" onPress={e => useRecommendation($, e.surface)} />
           </Box>
         </Box>
       )}
       <Box flexDirection="column" alignItems="stretch" rowGap={0}>
         <Text bold dimColor>
-          {choices.options.length > 0 ? 'OR YOUR OWN ANSWER' : 'YOUR ANSWER'}
+          YOUR ANSWER
         </Text>
         <Input
           key={field}
           value={fieldValue}
-          placeholder="Type your answer, Enter saves it"
+          placeholder={hasChoices ? 'A letter or your own answer, Enter saves it' : 'Type your answer, Enter saves it'}
           submitLabel="Save"
           {...(start === field ? { autoFocus: true as const } : {})}
           onInput={text => {

@@ -2,8 +2,8 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   answerCurrent,
+  answerOf,
   choiceAnswerOf,
-  choicePartsOf,
   choicesOf,
   editAt,
   formatAnswers,
@@ -188,12 +188,13 @@ test('choices written inline or one per line are split off the question', async 
   expect(choiceAnswerOf({ letter: 'b', text: 'A day off' })).toBe('(b) A day off')
 })
 
-test('a choice opening in bold keeps that part as its heading', async () => {
-  expect(choicePartsOf({ letter: 'a', text: '**Card instead of wizard.** It shows the `source` medium.' })).toEqual({
-    head: 'Card instead of wizard',
-    rest: 'It shows the source medium.',
-  })
-  expect(choicePartsOf({ letter: 'b', text: 'The normal **wizard**' })).toEqual({ head: '', rest: 'The normal wizard' })
+test('a lone letter stands for the choice it names', async () => {
+  const question = { number: 1, title: 'Day', body: 'What is tomorrow? (a) A work day (b) A day off', recommendation: null }
+  expect(answerOf('b', question)).toEqual({ kind: 'text', text: '(b) A day off' })
+  expect(answerOf(' (A) ', question)).toEqual({ kind: 'text', text: '(a) A work day' })
+  expect(answerOf('c', question)).toEqual({ kind: 'text', text: 'c' })
+  expect(answerOf('b', { ...question, body: 'Anything?' })).toEqual({ kind: 'text', text: 'b' })
+  expect(answerOf('b, but only mornings', question)).toEqual({ kind: 'text', text: 'b, but only mornings' })
 })
 
 test('a recommendation that opens with a choice names it', async () => {

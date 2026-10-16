@@ -138,7 +138,7 @@ test('a turn ending on a round opens the panel on the first question', async ($,
   await desktop.unmount()
 })
 
-test('on the desktop the choices of a question are buttons, the recommended one marked', async ($, on) => {
+test('on the desktop the choices stay in the question text and a typed letter picks one', async ($, on) => {
   const world = fakeEngine(on)
   await $.session.start(START)
   const answer = [
@@ -150,23 +150,18 @@ test('on the desktop the choices of a question are buttons, the recommended one 
   ].join('\n')
   await $.turn.complete({ ...TURN, answer })
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
-  expect(await ui.find({ type: 'Markdown', text: 'What is tomorrow?' })).toBeDefined()
-  expect(await ui.find({ key: 'choice-1', text: /A day off/ })).toBeDefined()
-  const recommended = await ui.find({ key: 'choice-0' })
-  expect(recommended?.text).toContain('★ Recommended')
-  expect(recommended?.props).toMatchObject({ variant: 'primary', autoFocus: true })
-  expect(await ui.find({ key: 'accept-recommendation' })).toBeUndefined()
-
-  await ui.press({ key: 'choice-1' })
-  expect(await ui.find({ type: 'Text', text: 'Focus' })).toBeDefined()
+  expect(await ui.find({ type: 'Markdown', text: 'What is tomorrow? (a) A work day (b) A day off (c) Mixed' })).toBeDefined()
   expect(await ui.find({ key: 'choice-0' })).toBeUndefined()
+  expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
+  expect((await ui.find({ key: 'answer-0' }))?.props.placeholder).toBe('A letter or your own answer, Enter saves it')
+
+  await ui.input({ key: 'answer-0', text: 'b' })
+  expect(await ui.find({ type: 'Text', text: 'Focus' })).toBeDefined()
   expect((await ui.find({ key: 'accept-recommendation' }))?.props.autoFocus).toBe(true)
 
   await ui.press({ key: 'goto-0' })
-  expect((await ui.find({ key: 'choice-1' }))?.text).toContain('✓ Chosen')
-  expect((await ui.find({ key: 'choice-0' }))?.props.variant).toBeUndefined()
-  expect(await ui.find({ key: 'answer-0', text: '' })).toBeDefined()
-  expect((await ui.find({ key: 'choice-1' }))?.props.autoFocus).toBe(true)
+  expect(await ui.find({ key: 'answer-0', text: '(b) A day off' })).toBeDefined()
+  expect((await ui.find({ key: 'answer-0' }))?.props.autoFocus).toBe(true)
   await ui.press({ key: 'goto-1' })
 
   await ui.press({ key: 'accept-recommendation' })

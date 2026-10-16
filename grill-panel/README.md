@@ -7,6 +7,7 @@ Answers Claude's question rounds one question at a time. When Claude ends a turn
 | Claude's answer ends on a question round | the panel opens on the first open question; `🔥 0/5` in the footer under the prompt counts the answered questions |
 | Enter in the field | the answer is saved, the next open question comes up |
 | Enter on an empty field | the question's recommendation is taken (`Q2: Recommendation accepted`) |
+| a letter alone (`b`) for a question with `(a) … (b) …` choices | that choice is saved (`Q1: (b) A day off`) |
 | **Edit recommendation** | the recommendation's text goes into the field to change before Enter |
 | Shift+Tab, then Enter | back to the previous question |
 | **Skip ▶** | the question stays open and comes back after the others |
@@ -20,9 +21,9 @@ The table describes the terminal. The desktop app and VS Code draw the same flow
 | Where | What you see |
 | --- | --- |
 | above the question | `Question 2 of 5`, a progress ring, and a numbered button per question (`✓` once answered); a click jumps there |
-| choices written as `(a) … (b) …` | one button per choice, the whole row clickable, that saves it as the answer (`Q1: (b) A day off`); the choice the recommendation opens with is marked *Recommended*, the one already picked *Chosen* |
-| the recommendation | a framed card with **Accept** (left out when a choice carries it) and **Edit before saving** |
-| where the focus starts | on the recommended choice, else on **Accept**, else on the field, so Enter alone takes the recommendation; Tab and the arrow keys move on, and a question answered before starts on its answer |
+| choices written as `(a) … (b) …` | they stay in the question text as Claude wrote them; a letter alone in the field picks one, as in the terminal |
+| the recommendation | a framed card with **Accept** and **Edit before saving** |
+| where the focus starts | on **Accept**, so Enter alone takes the recommendation; on the field when the question has no recommendation or was answered in text before |
 | the field | a new, empty field per question; Enter saves; past 50 characters the answer is repeated wrapped beneath it |
 | below the field | **Skip for now**, and dimmed **Send now…** and **Discard** |
 | the review | one card per question with its full answer and **Edit**; open questions are framed in the warning color |

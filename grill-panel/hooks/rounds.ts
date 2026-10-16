@@ -203,8 +203,15 @@ export function resume(round: Round): Round {
   return index === -1 ? toReview(round) : { ...round, current: index, mode: 'answer', prefill: null }
 }
 
+// A lone letter for a question with choices stands for that choice, so Claude
+// reads "(b) A day off" rather than a bare "b".
 export function answerOf(text: string, question: Question): Answer | null {
   const normalized = text.replace(/\r\n?/g, '\n').trim()
+  const letter = LETTER_ANSWER.exec(normalized)?.[1]?.toLowerCase()
+  const choice = letter === undefined ? undefined : choicesOf(question.body).options.find(i => i.letter === letter)
+  if (choice !== undefined) {
+    return { kind: 'text', text: choiceAnswerOf(choice) }
+  }
   if (normalized.length > 0) {
     return { kind: 'text', text: normalized }
   }
@@ -306,7 +313,7 @@ const CHOICE_MARK = /(^|\s)\(([a-z])\)\s+/gu
 const CHOICE_EDGE = /[\s,;\-–—•*]+$/u
 const RECOMMENDED_CHOICE = /^[\s*_]*\(([a-z])\)/u
 const LINE_START = /\n(?=\S)/u
-const BOLD_HEAD = /^\*\*(.+?)\*\*[\s:.\-–—]*/u
+const LETTER_ANSWER = /^\(?([a-z])\)?\.?$/iu
 
 // Models list the choices inline as "(a) … (b) …" as often as one per line.
 // Only a run starting at (a) with the letters in order counts, so a stray
@@ -339,20 +346,6 @@ export function choicesOf(body: string): Choices {
     })),
     trail: body.slice(end).trim(),
   }
-}
-
-// A button draws plain text, so a choice opening in bold ("**Card.** It shows
-// …") keeps that part as its heading and loses the remaining markers.
-export function choicePartsOf(choice: Choice): { head: string; rest: string } {
-  const match = BOLD_HEAD.exec(choice.text)
-  const head = match?.[1] ?? ''
-  const rest = match === null ? choice.text : choice.text.slice(match[0].length)
-
-  return { head: plainOf(head).replace(/[.:]$/u, ''), rest: plainOf(rest) }
-}
-
-function plainOf(text: string): string {
-  return text.replace(/\*\*|__|`/gu, '').trim()
 }
 
 export function recommendedLetterOf(recommendation: string | null): string | null {
