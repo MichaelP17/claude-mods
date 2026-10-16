@@ -99,9 +99,9 @@ test('a project ask rule shows its reason in one dialog, also for globally harml
   expect(asked[0]).toContain('Starts a local instance without data')
   expect(ran).toEqual(['dotnet run --project src/Api'])
 
-  await $.tool.call({ tool: 'Bash', command: 'docker compose pull' })
+  await $.tool.call({ tool: 'Bash', command: 'docker compose pull && brew install jq' })
   expect(asked).toHaveLength(2)
-  expect(asked[1]).toContain('docker compose pull downloads or builds images')
+  expect(asked[1]).toContain('brew install changes installed packages')
   expect(asked[1]).toContain('Tested on the Windows PC')
 
   await $.tool.call({ tool: 'Bash', command: 'dotnet build' })

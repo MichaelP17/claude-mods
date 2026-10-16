@@ -27,13 +27,12 @@ No setup needed.
 | global `npm`, `pnpm`, `yarn`, `bun` installs | `pip` inside a virtual environment (`.venv/bin/pip`) |
 | `pip` outside a virtual environment, `pipx`, `uv tool`, `cargo install`, `go install`, `gem install`, `dotnet tool install -g` | starting and stopping services: `colima start`, `docker compose up`, `docker run`, `brew services start`, `launchctl load` |
 | `mise install` and `use`, `asdf`, `rustup` | `git config` without `--global` |
-| `docker pull`, `build`, `create`, `docker compose pull`, `build` | |
-| `colima delete`, `podman machine init` and `rm`, `launchctl enable` | |
+| `colima delete`, `limactl delete`, `podman machine rm`, `launchctl enable` | everything inside Docker: `docker pull`, `build`, `create`, `docker compose pull`, `build`, `podman machine init` |
 | `defaults write`, writing `git config --global`, `xcode-select --install`, `softwareupdate`, `winget`, `choco`, `scoop` | |
 
 Chained commands are checked part by part: in `cd app && brew install jq` the second part is caught. Text inside quotes is data, so searching for install commands — `grep 'brew install\|cargo install' log` — is let through.
 
-Starting a service changes nothing permanent and is left to [`service-radar`](../service-radar/README.md), which keeps track of what Claude started and offers to stop it. Use an `ask` rule (below) where starting something should still be confirmed.
+Images, containers and VMs live inside the container runtime and can be removed there again, so setting them up is let through; only deleting a VM, which takes its data along, is caught. Starting a service changes nothing permanent and is left to [`service-radar`](../service-radar/README.md), which keeps track of what Claude started and offers to stop it. Use an `ask` rule (below) where starting something should still be confirmed.
 
 ## Per-project rules
 

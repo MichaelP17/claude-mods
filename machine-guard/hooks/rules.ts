@@ -105,24 +105,14 @@ const RULES: Rule[] = [
   (tool, args) => {
     const verb = subcommand(args)
     switch (tool) {
-      // Starting and stopping services is left to service-radar, which tracks
-      // what was started; only creating, deleting and downloading stays here.
+      // What happens inside the container runtime (images, containers, VMs
+      // being set up) can be undone there and is let through; starting and
+      // stopping is left to service-radar. Only deleting a VM with its data stays.
       case 'colima':
       case 'limactl':
         return verb === 'delete' ? `${tool} delete removes a VM and its data` : null
       case 'podman':
-        return verb === 'machine' && has(args, 'init', 'rm') ? 'podman machine creates or removes a VM' : null
-      case 'docker': {
-        if (verb === 'compose') {
-          const composeVerb = subcommand(args.slice(args.indexOf('compose') + 1))
-          return composeVerb !== undefined && ['pull', 'build', 'create'].includes(composeVerb)
-            ? `docker compose ${composeVerb} downloads or builds images`
-            : null
-        }
-        return verb !== undefined && ['pull', 'build', 'create', 'load', 'import'].includes(verb)
-          ? `docker ${verb} downloads or builds images`
-          : null
-      }
+        return verb === 'machine' && has(args, 'rm') ? 'podman machine rm removes a VM and its data' : null
       case 'launchctl':
         return verb !== undefined && ['enable', 'submit'].includes(verb)
           ? `launchctl ${verb} changes background services permanently`
@@ -305,16 +295,10 @@ export function findMachineChanges(fullCommand: string): Finding[] {
 
 export type ProjectRule = { match: string; reason: string }
 
-export type ProjectConfig = { block: ProjectRule[]; ask: ProjectRule[]; allow: ProjectRule[] }
+export type ProjectConfig = { block: ProjectRule[]; ask: ProjectRule[] }
 
 export function findProjectMatches(command: string, rules: readonly ProjectRule[]): ProjectRule[] {
   const segments = splitSegments(command)
 
   return rules.filter(rule => segments.some(segment => new RegExp(rule.match).test(segment)))
-}
-
-// An allow rule waives a built-in finding only for the part it matches, so a
-// chained command still asks about every other part.
-export function withoutAllowed(findings: readonly Finding[], rules: readonly ProjectRule[]): Finding[] {
-  return findings.filter(finding => !rules.some(rule => new RegExp(rule.match).test(finding.segment)))
 }
