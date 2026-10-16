@@ -491,17 +491,22 @@ export const GLOW =
 
 // The card heading a pane: an eyebrow, a count at the right, a title of up
 // to two lines and, given segments, a bar with one segment per step.
-// `reserve` keeps the title clear of native buttons laid over the right side.
+// `reserve` keeps the title clear of native buttons laid over the right side;
+// a card without a bar is too low for them beside the count at its top right,
+// so the count then goes beneath the title.
 export function headerCard(card: { width: number; eyebrow: string; title: string; counter: string; segments?: readonly Segment[]; reserve?: number }): Card {
   const { width } = card
   const segments = card.segments ?? []
   const inner = width - 2 * PAD
-  const counterWidth = textWidth(card.counter, 12)
-  const eyebrow = fitText(card.eyebrow, inner - counterWidth - 16, EYEBROW, true)
-  const title = textSection(parseInline(card.title).map(i => ({ ...i, isBold: true })), PAD, inner - (card.reserve ?? 0), { size: 17, maxLines: 2 })
+  const reserve = card.reserve ?? 0
+  const isCountBelow = reserve > 0 && segments.length === 0
+  const counterWidth = isCountBelow ? 0 : textWidth(card.counter, 12)
+  const eyebrow = fitText(card.eyebrow, inner - counterWidth - 16 - (isCountBelow ? reserve : 0), EYEBROW, true)
+  const title = textSection(parseInline(card.title).map(i => ({ ...i, isBold: true })), PAD, inner - reserve, { size: 17, maxLines: 2 })
   const titleTop = PAD + EYEBROW + 8
+  const countY = titleTop + title.height + 14
   const barY = titleTop + title.height + 12
-  const height = segments.length === 0 ? titleTop + title.height + PAD - 4 : barY + 6 + PAD
+  const height = isCountBelow ? countY + PAD - 2 : segments.length === 0 ? titleTop + title.height + PAD - 4 : barY + 6 + PAD
   const count = Math.max(1, segments.length)
   const segmentWidth = (inner - 4 * (count - 1)) / count
   const bars = segments.map(
@@ -512,7 +517,9 @@ export function headerCard(card: { width: number; eyebrow: string; title: string
     GLOW,
     `<rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="${RADIUS}" fill="url(#glow)"/>`,
     eyebrowSvg(eyebrow, PAD, PAD + EYEBROW),
-    `<text class="muted" x="${width - PAD}" y="${PAD + EYEBROW}" font-size="12" text-anchor="end">${escape(card.counter)}</text>`,
+    isCountBelow
+      ? `<text class="muted" x="${PAD}" y="${countY}" font-size="12.5">${escape(fitText(card.counter, inner - reserve, 12.5))}</text>`
+      : `<text class="muted" x="${width - PAD}" y="${PAD + EYEBROW}" font-size="12" text-anchor="end">${escape(card.counter)}</text>`,
     title.draw(titleTop),
     ...bars,
   ]
