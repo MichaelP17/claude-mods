@@ -40,7 +40,7 @@ import {
   sendingCard,
 } from './look'
 import type { Card, Segment } from './look'
-import { PAD, cardWidthOf } from './svg'
+import { PAD, ROOMY_WIDTH, cardWidthOf } from './svg'
 
 const PANE = 'grill'
 const TITLE = 'Grill'
@@ -370,10 +370,6 @@ function drawCards(ui: RemoteElements, cards: readonly Card[], width: number): R
 
   return cards.map(card => <Svg source={card.source} alt={card.alt} width={width} height={card.height} />)
 }
-
-// Below this width a card leaves too little room beside native controls, so
-// they go beneath it instead of over it.
-const ROOMY_WIDTH = 420
 
 const FIELD_LABEL_WIDTH = 176
 

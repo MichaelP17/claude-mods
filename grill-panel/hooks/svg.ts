@@ -547,11 +547,17 @@ export function fieldCard(width: number, label: string, hint: string, labelWidth
   return { height: FIELD_HEIGHT, alt: `${label}: ${hint}`, source: svgDocument(width, FIELD_HEIGHT, body.join('')) }
 }
 
-// A slim card for a row of native buttons laid over it.
-export function barCard(width: number, alt: string): Card {
-  const height = 56
+// Below this width a card leaves too little room beside native controls, so
+// they go beneath it instead of over it.
+export const ROOMY_WIDTH = 420
 
-  return { height, alt, source: svgDocument(width, height, frame(width, height, 'card')) }
+// A slim card for a row of native buttons laid over it; given a label, that
+// heads the bar at its left, as a section title with its actions beside it.
+export function barCard(width: number, alt: string, label = '', variant: Variant = 'card', reserve = 0): Card {
+  const height = 56
+  const text = label.length === 0 ? '' : eyebrowSvg(fitText(label, width - 2 * PAD - reserve - 12, EYEBROW, true), PAD, height / 2 + EYEBROW / 2 - 1)
+
+  return { height, alt, source: svgDocument(width, height, frame(width, height, variant) + text) }
 }
 
 // A diff or a list of changes in the code font: added lines green, removed

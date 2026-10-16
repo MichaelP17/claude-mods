@@ -1,11 +1,11 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderElement } from 'claude-code'
 
 import type { Comparison, Snapshot } from '../types'
 import type { HubCall, HubEntry } from './hub'
 import { buttonWidthOf, diffCards, headerCard, noticeCard, snapshotCard, spinnerSvg } from './look'
 import type { Card } from './look'
-import { cardWidthOf } from './svg'
+import { ROOMY_WIDTH, barCard, cardWidthOf, columnsOf, fieldCard } from './svg'
 import { hasConfigChanges } from './status'
 
 const PANE = 'config-snapshots'
@@ -130,6 +130,8 @@ async function openSnapshots($: EngineInterface): Promise<void> {
   void reportStatus($)
 }
 
+const FIELD_LABEL_WIDTH = 176
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -222,26 +224,61 @@ export const register: Register = on => {
         counter: `${list.length} ${list.length === 1 ? 'snapshot' : 'snapshots'}`,
       })
 
-      // The buttons lie over the card's right edge: the picture takes no presses.
+      const isRoomy = width >= ROOMY_WIDTH
+      const fieldLabel = 'TAKE A SNAPSHOT'
+      const fieldHint = changed === true ? 'Something changed · Enter records it' : 'What it captures · Enter records it'
+      const input = (
+        <Input
+          key="snapshot-name"
+          value=""
+          placeholder="e.g. Before trying the new plugin"
+          submitLabel="Snapshot"
+          autoFocus
+          onSubmit={label => {
+            if (label.trim().length > 0) {
+              void takeSnapshot($, label.trim())
+            }
+          }}
+        />
+      )
+      // The field and the buttons lie over the cards, centered on their height:
+      // the pictures take no presses. A narrow pane keeps them beneath.
+      const layered = (key: string, list: readonly Card[], buttons: RenderElement[]) =>
+        isRoomy ? (
+          <Box key={key} flexDirection="column">
+            {drawCards(list)}
+            <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
+              {buttons}
+            </Box>
+          </Box>
+        ) : (
+          <Box key={key} flexDirection="column" rowGap={1}>
+            {drawCards(list)}
+            <Box flexDirection="row" columnGap={1}>
+              {buttons}
+            </Box>
+          </Box>
+        )
+
       return (
         <Box flexDirection="column" rowGap={1}>
           {drawCards([header])}
-          <Box flexDirection="column" rowGap={0}>
-            <Text bold dimColor>
-              {changed === true ? 'TAKE A SNAPSHOT · SOMETHING CHANGED' : 'TAKE A SNAPSHOT'}
-            </Text>
-            <Input
-              key="snapshot-name"
-              value=""
-              placeholder="What it captures, e.g. Before trying the new plugin"
-              submitLabel="Snapshot"
-              autoFocus
-              onSubmit={label => {
-                if (label.trim().length > 0) {
-                  void takeSnapshot($, label.trim())
-                }
-              }}
-            />
+          <Box flexDirection="column" rowGap={isRoomy ? 1 : 0}>
+            {isRoomy ? (
+              <Box key="take" flexDirection="column">
+                {drawCards([fieldCard(width, fieldLabel, fieldHint, FIELD_LABEL_WIDTH)])}
+                <Box position="absolute" top={0} bottom={0} left={columnsOf(FIELD_LABEL_WIDTH)} right={2} flexDirection="column" justifyContent="center">
+                  {input}
+                </Box>
+              </Box>
+            ) : (
+              <Box flexDirection="column">
+                <Text bold dimColor>
+                  {changed === true ? 'TAKE A SNAPSHOT · SOMETHING CHANGED' : fieldLabel}
+                </Text>
+                {input}
+              </Box>
+            )}
             {running && current === null ? spinner('Recording…') : message.length > 0 && <Text dimColor>{message}</Text>}
           </Box>
 
@@ -258,13 +295,10 @@ export const register: Register = on => {
 
             return (
               <Box key={`card-${snapshot.name}`} flexDirection="column" rowGap={1}>
-                <Box flexDirection="column">
-                  {drawCards([card])}
-                  <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
-                    <Button key={`select-${snapshot.name}`} {...(isSelected ? {} : { dimColor: true })} label="⇄ Compare" onPress={() => selectSnapshot($, snapshot.name)} />
-                    {isSelected && !armed && <Button key="arm" hover={{ color: 'error' }} label="↶ Roll back…" onPress={() => update($, isArmed, () => true)} />}
-                  </Box>
-                </Box>
+                {layered(`snapshot-${snapshot.name}`, [card], [
+                  <Button key={`select-${snapshot.name}`} {...(isSelected ? {} : { dimColor: true })} label="⇄ Compare" onPress={() => selectSnapshot($, snapshot.name)} />,
+                  ...(isSelected && !armed ? [<Button key="arm" hover={{ color: 'error' }} label="↶ Roll back…" onPress={() => update($, isArmed, () => true)} />] : []),
+                ])}
                 {isSelected && running && spinner('Comparing with the current config…')}
                 {result !== null &&
                   !running &&
@@ -272,29 +306,22 @@ export const register: Register = on => {
                     <Text color="success">✓ Nothing changed since this snapshot</Text>
                   ) : (
                     <Box flexDirection="column" rowGap={1}>
-                      <Text bold dimColor>
-                        {result.isFull ? 'EVERY CHANGE SINCE THIS SNAPSHOT' : 'CHANGED SINCE THIS SNAPSHOT'}
-                      </Text>
+                      {layered('diff-bar', [barCard(width, 'What changed', result.isFull ? 'EVERY CHANGE SINCE THIS SNAPSHOT' : 'CHANGED SINCE THIS SNAPSHOT')], [
+                        <Button key="full-diff" dimColor label={result.isFull ? 'Show summary' : 'Show full diff'} onPress={() => compare($, snapshot.name, !result.isFull)} />,
+                      ])}
                       {drawCards(diffCards(width, result.text, result.text))}
-                      <Box flexDirection="row">
-                        <Button
-                          key="full-diff"
-                          dimColor
-                          label={result.isFull ? 'Show summary' : 'Show full diff'}
-                          onPress={() => compare($, snapshot.name, !result.isFull)}
-                        />
-                      </Box>
                     </Box>
                   ))}
-                {isSelected && armed && (
-                  <Box flexDirection="column" rowGap={1}>
-                    {drawCards(noticeCard(width, 'card-error', `Roll back to ${snapshot.name}?`, 'The current config is replaced by this snapshot. Claude Code loads it after a restart.'))}
-                    <Box flexDirection="row" columnGap={1}>
-                      <Button key="confirm" variant="primary" label={`Roll back to ${snapshot.name}`} onPress={() => rollBack($, snapshot.name)} />
-                      <Button key="cancel" label="Cancel" onPress={() => update($, isArmed, () => false)} />
-                    </Box>
-                  </Box>
-                )}
+                {isSelected &&
+                  armed &&
+                  layered(
+                    'rollback',
+                    noticeCard(width, 'card-error', `Roll back to ${snapshot.name}?`, 'The current config is replaced by this snapshot. Claude Code loads it after a restart.', isRoomy ? buttonWidthOf(['↶ Roll back', 'Cancel']) : 0),
+                    [
+                      <Button key="confirm" variant="primary" label="↶ Roll back" onPress={() => rollBack($, snapshot.name)} />,
+                      <Button key="cancel" label="Cancel" onPress={() => update($, isArmed, () => false)} />,
+                    ],
+                  )}
               </Box>
             )
           })}

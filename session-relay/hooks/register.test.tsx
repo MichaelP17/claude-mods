@@ -1,8 +1,17 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { ElementQuery, Engine, FoundElement } from 'claude-code/testing'
 
 const HOME = '/Users/test'
+
+// The terminal writes the band as text; the desktop draws cards whose alt
+// text says the same.
+async function shown(ui: { findAll: (query: ElementQuery) => Promise<FoundElement[]> }): Promise<string[]> {
+  const texts = await ui.findAll({ type: 'Text' })
+  const cards = await ui.findAll({ type: 'Svg' })
+
+  return [...texts.map(i => i.text), ...cards.map(i => String(i.props.alt))]
+}
 const RELAY = `${HOME}/.claude/relay/clued`
 const LEAD_ROOT = `${HOME}/Projects/motion-studio`
 const WORKER_ROOT = `${HOME}/Projects/Clued`
@@ -160,8 +169,7 @@ test('a lead offers a fenced prompt from its answer and sends it to the worker',
     if (surface === 'terminal') {
       expect(await ui.find({ type: 'Text', text: /^Prompt for clued · 519 chars · Render the Zlatan clip/ })).toBeDefined()
     } else {
-      expect(await ui.find({ type: 'Text', text: '⇄ Prompt for clued' })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /^519 chars · Render the Zlatan clip/ })).toBeDefined()
+      expect((await shown(ui)).some(i => /^⇄ Prompt for clued: 519 chars · Render the Zlatan clip/.test(i))).toBe(true)
     }
     await ui.unmount()
   }
@@ -212,7 +220,7 @@ test('a worker takes a task into a fresh session as the user\'s prompt and repor
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'session-relay', surface, ...BAND })
-    expect(await ui.find({ type: 'Text', text: /^(⇄ )?Task from the lead · for a fresh session/ })).toBeDefined()
+    expect((await shown(ui)).some(i => /^(⇄ )?Task from the lead · for a fresh session/.test(i))).toBe(true)
     await ui.unmount()
   }
 
@@ -280,11 +288,10 @@ test('a lead announces answers, notifies for new ones and attaches them to the n
   expect(await footerText($)).toBe('⇄ clued 📨 2')
 
   const ui = await $.ui.mount({ plugin: 'session-relay', surface: 'desktop', ...BAND })
-  expect(await ui.find({ type: 'Text', text: '⇄ clued answered 2×' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^16 chars · Handoff written\./ })).toBeDefined()
+  expect((await shown(ui)).some(i => /^⇄ clued answered 2×: 16 chars · Handoff written\./.test(i))).toBe(true)
   await ui.press({ key: 'attach' })
   expect(await footerText($)).toBe('⇄ clued 📎 2')
-  expect(await ui.find({ type: 'Text', text: /go with your next prompt/ })).toBeDefined()
+  expect((await shown(ui)).some(i => /go with your next prompt/.test(i))).toBe(true)
   await ui.unmount()
 
   await $.prompt.submit({ text: 'Slower please', wait: false, origin: { kind: 'composer' } })

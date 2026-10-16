@@ -105,7 +105,11 @@ test('the capture pane saves each submit, multi-line ones included', async ($, o
       expect(await ui.find({ type: 'Text', text: /1 idea for this folder/ })).toBeDefined()
       expect(lineBreakHint).toBeDefined()
     } else {
-      expect(await cardsOf(ui)).toEqual(['💡 IDEAS: 1 waiting, app', '1. Split the importer by source'])
+      expect(await cardsOf(ui)).toEqual([
+        '💡 IDEAS: 1 waiting, app',
+        'NEW IDEA: Enter saves it here · Claude sees an idea only once you hand it over',
+        '1. Split the importer by source',
+      ])
       expect(await ui.find({ key: 'work-0' })).toBeDefined()
       expect(lineBreakHint).toBeUndefined()
     }

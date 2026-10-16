@@ -3,9 +3,9 @@ import type { EngineInterface, Register, RenderElement, Timer } from 'claude-cod
 
 import type { Answer, Link, Presence, Task } from '../types'
 import type { HubCall, HubEntry } from './hub'
-import { headerCard, messageCards } from './look'
+import { bandCard, barCard, buttonWidthOf, headerCard, messageCards } from './look'
 import type { Card } from './look'
-import { cardWidthOf } from './svg'
+import { ROOMY_WIDTH, cardWidthOf } from './svg'
 import {
   USAGE,
   channelOf,
@@ -653,25 +653,44 @@ export const register: Register = (on, options) => {
     const latest = items.at(-1)
     const blockCount = currentOffer?.blocks.length ?? 0
     if (e.surface !== 'terminal') {
-      const drawCard = (key: string, title: string, detail: string, buttons: RenderElement) => (
-        <Box
-          key={key}
-          flexDirection="row"
-          columnGap={2}
-          alignItems="center"
-          borderStyle="round"
-          borderColor="claude"
-          paddingX={1}
-        >
-          <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-            <Text bold>{title}</Text>
-            <Text dimColor wrap="truncate-end">
-              {detail}
-            </Text>
+      const { Svg } = $.ui.resolve(e)
+      const width = Math.max(240, Math.min(1600, (e.props.bodyColumns || 100) * 8 - 8))
+      const labels: Record<string, string[]> = {
+        offer: ['➤ Send', '✦ Fresh session', ...(blockCount > 1 ? ['Other block'] : []), 'View', 'Dismiss'],
+        attached: ['Detach', 'View'],
+        answers: ['📎 Attach', '➤ Forward now', 'View', 'Discard'],
+        inactive: ['Take over'],
+        task: ['✦ Clear & send', '➤ Send here', 'View', 'Discard'],
+      }
+      // The buttons lie over the card, centered on its height: the picture
+      // takes no presses. Too many for the room beside the text, and the band
+      // stays a native card.
+      const drawCard = (key: string, title: string, detail: string, buttons: RenderElement) => {
+        const reserve = buttonWidthOf(labels[key] ?? [])
+        if (reserve > width * 0.6) {
+          return (
+            <Box key={key} flexDirection="row" columnGap={2} alignItems="center" borderStyle="round" borderColor="claude" paddingX={1}>
+              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                <Text bold>{title}</Text>
+                <Text dimColor wrap="truncate-end">
+                  {detail}
+                </Text>
+              </Box>
+              {buttons}
+            </Box>
+          )
+        }
+        const card = bandCard(width, title, detail, reserve)
+
+        return (
+          <Box key={key} flexDirection="column">
+            <Svg source={card.source} alt={card.alt} width={width} height={card.height} />
+            <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center">
+              {buttons}
+            </Box>
           </Box>
-          {buttons}
-        </Box>
-      )
+        )
+      }
 
       return (
         <Box flexDirection="column" rowGap={1}>
@@ -893,42 +912,61 @@ export const register: Register = (on, options) => {
         counter: detail.length > 0 ? detail : state,
       })
       const drawCards = (list: readonly Card[]) => list.map(card => <Svg source={card.source} alt={card.alt} width={width} height={card.height} />)
+      // A bar names each message and carries its actions, laid over it and
+      // centered on its height; a narrow pane keeps them beneath the name.
+      const actionBar = (key: string, label: string, buttonLabels: readonly string[], buttons: RenderElement[]) =>
+        width >= ROOMY_WIDTH ? (
+          <Box key={key} flexDirection="column">
+            {drawCards([barCard(width, label, label, 'card', buttonWidthOf(buttonLabels))])}
+            <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
+              {buttons}
+            </Box>
+          </Box>
+        ) : (
+          <Box key={key} flexDirection="column" rowGap={1}>
+            <Text bold dimColor>
+              {label}
+            </Text>
+            <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+              {buttons}
+            </Box>
+          </Box>
+        )
 
       return (
         <Box flexDirection="column" rowGap={1}>
           {drawCards([header])}
           {current.role === 'lead' && block !== undefined && (
             <Box key="offer" flexDirection="column" rowGap={1}>
-              {drawCards(messageCards(width, `PROMPT FOR ${current.channel.toUpperCase()} · ${formatChars(block.length)}`, block, 'card-accent'))}
-              <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-                <Button key="pane-send" label="➤ Send" variant="primary" onPress={() => sendTask($, block, false)} />
-                <Button key="pane-send-fresh" label="✦ Send as fresh session" onPress={() => sendTask($, block, true)} />
-              </Box>
+              {actionBar('offer-bar', `PROMPT FOR ${current.channel.toUpperCase()} · ${formatChars(block.length)}`, ['➤ Send', '✦ Fresh session'], [
+                <Button key="pane-send" label="➤ Send" variant="primary" onPress={() => sendTask($, block, false)} />,
+                <Button key="pane-send-fresh" label="✦ Fresh session" onPress={() => sendTask($, block, true)} />,
+              ])}
+              {drawCards(messageCards(width, null, block, 'card-accent'))}
             </Box>
           )}
-          {current.role === 'lead' &&
-            items.map((answer, index) => (
-              <Box key={`answer-${answer.id}`} flexDirection="column">
-                {drawCards(messageCards(width, `ANSWER ${index + 1} OF ${items.length} · ${formatChars(answer.text.length)}`, answer.text, 'card'))}
-              </Box>
-            ))}
           {current.role === 'lead' && items.length > 0 && (
-            <Box key="answer-actions" flexDirection="row" columnGap={1} flexWrap="wrap">
-              <Button key="pane-attach" label="📎 Attach to next prompt" variant="primary" onPress={() => attachAnswers($, true)} />
-              <Button key="pane-forward" label="➤ Forward now" onPress={() => forwardAnswers($)} />
-              <Button key="pane-discard" dimColor label="✕ Discard" onPress={() => dropAnswers($, items)} />
+            <Box key="answers" flexDirection="column" rowGap={1}>
+              {actionBar('answers-bar', `${items.length === 1 ? 'ANSWER' : `${items.length} ANSWERS`} FROM ${current.channel.toUpperCase()}`, ['📎 Attach', '➤ Forward now', '✕ Discard'], [
+                <Button key="pane-attach" label="📎 Attach" variant="primary" onPress={() => attachAnswers($, true)} />,
+                <Button key="pane-forward" label="➤ Forward now" onPress={() => forwardAnswers($)} />,
+                <Button key="pane-discard" dimColor label="✕ Discard" onPress={() => dropAnswers($, items)} />,
+              ])}
+              {items.map((answer, index) => (
+                <Box key={`answer-${answer.id}`} flexDirection="column">
+                  {drawCards(messageCards(width, `ANSWER ${index + 1} OF ${items.length} · ${formatChars(answer.text.length)}`, answer.text, 'card'))}
+                </Box>
+              ))}
             </Box>
           )}
           {current.role === 'worker' && task !== undefined && (
             <Box key="task" flexDirection="column" rowGap={1}>
-              {drawCards(
-                messageCards(width, `TASK FROM THE LEAD · ${formatChars(task.text.length)}${task.isFresh ? ' · FOR A FRESH SESSION' : ''}`, task.text, 'card-accent'),
-              )}
-              <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-                <Button key="pane-clear-send" label="✦ Clear & send" {...(task.isFresh ? { variant: 'primary' as const } : {})} onPress={() => takeTask($, task, true)} />
-                <Button key="pane-send-here" label="➤ Send here" {...(task.isFresh ? {} : { variant: 'primary' as const })} onPress={() => takeTask($, task, false)} />
-                <Button key="pane-discard-task" dimColor label="✕ Discard" onPress={() => discardTask($, task)} />
-              </Box>
+              {actionBar('task-bar', `TASK FROM THE LEAD · ${formatChars(task.text.length)}${task.isFresh ? ' · FRESH SESSION' : ''}`, ['✦ Clear & send', '➤ Send here', '✕ Discard'], [
+                <Button key="pane-clear-send" label="✦ Clear & send" {...(task.isFresh ? { variant: 'primary' as const } : {})} onPress={() => takeTask($, task, true)} />,
+                <Button key="pane-send-here" label="➤ Send here" {...(task.isFresh ? {} : { variant: 'primary' as const })} onPress={() => takeTask($, task, false)} />,
+                <Button key="pane-discard-task" dimColor label="✕ Discard" onPress={() => discardTask($, task)} />,
+              ])}
+              {drawCards(messageCards(width, null, task.text, 'card-accent'))}
             </Box>
           )}
           {isEmpty && (

@@ -30,7 +30,7 @@ A fenced block counts as a prompt from 300 characters on, when it has no languag
 
 | Command | Effect |
 | --- | --- |
-| `/relay` | A pane with everything pending in full, and the actions; in the desktop app the prompt, the answers and the task are cards that show their Markdown, the actions beneath them |
+| `/relay` | A pane with everything pending in full, and the actions; in the desktop app the prompt, the answers and the task are cards that show their Markdown, each under a bar that names it and carries its actions |
 | `/relay send [text]` | Sends the text as typed; without text the last fenced block of the last answer |
 | `/relay off` | Leaves the channel; this folder no longer joins it |
 

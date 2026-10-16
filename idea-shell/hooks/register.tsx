@@ -4,7 +4,7 @@ import type { ElementTable, EngineInterface, Register, RenderElement } from 'cla
 import type { HubCall, HubEntry } from './hub'
 import { formatIdeas, ideasFileOf, normalizeIdea, numberedList, parseIdeas, previewOf } from './ideas'
 import { buttonWidthOf, headerCard, ideaCards } from './look'
-import { cardWidthOf } from './svg'
+import { ROOMY_WIDTH, cardWidthOf, columnsOf, fieldCard } from './svg'
 
 const CAPTURE_PANE = 'idea'
 const LIST_PANE = 'ideas'
@@ -139,32 +139,49 @@ type IdeasElements = Pick<ElementTable<'desktop'>, 'Box' | 'Button' | 'Svg' | 'T
 
 const IDEA_LABELS = ['➤ Work on it', '✕']
 
-// The buttons lie over each card's right edge: the picture takes no presses.
+const FIELD_LABEL_WIDTH = 176
+
+const FIELD_HINT = 'Enter saves it here · Claude sees an idea only once you hand it over'
+
+// The field and the buttons lie over the cards, centered on their height: the
+// pictures take no presses. A narrow pane keeps the field beneath its label.
 function drawIdeas($: EngineInterface, ui: IdeasElements, list: readonly string[], folder: string, width: number): RenderElement {
   const { Box, Button, Input, Svg, Text } = ui
   const header = headerCard({ width, eyebrow: '💡 IDEAS', title: list.length === 0 ? 'Nothing waiting' : `${list.length} waiting`, counter: folder })
+  const field = fieldCard(width, 'NEW IDEA', FIELD_HINT, FIELD_LABEL_WIDTH)
+  const drawInput = (Field: ElementTable<'desktop'>['Input']) => (
+    <Field
+      key="idea"
+      value=""
+      placeholder="Capture a new idea…"
+      submitLabel="Save"
+      autoFocus
+      onSubmit={value => {
+        void addIdea($, value)
+      }}
+    />
+  )
 
   return (
     <Box flexDirection="column" rowGap={1}>
       <Svg source={header.source} alt={header.alt} width={width} height={header.height} />
-      {Input !== null && (
-        <Box flexDirection="column">
-          <Text bold dimColor>
-            NEW IDEA
-          </Text>
-          <Input
-            key="idea"
-            value=""
-            placeholder="Capture a new idea…"
-            submitLabel="Save"
-            autoFocus
-            onSubmit={value => {
-              void addIdea($, value)
-            }}
-          />
-          <Text dimColor>Enter saves it here · Claude sees an idea only once you hand it over</Text>
-        </Box>
-      )}
+      {Input !== null &&
+        (width >= ROOMY_WIDTH ? (
+          <Box key="new-idea" flexDirection="column">
+            <Svg source={field.source} alt={field.alt} width={width} height={field.height} />
+            <Box position="absolute" top={0} bottom={0} left={columnsOf(FIELD_LABEL_WIDTH)} right={2} flexDirection="column" justifyContent="center">
+              {drawInput(Input)}
+            </Box>
+          </Box>
+        ) : (
+          <Box flexDirection="column">
+            <Text bold dimColor>
+              NEW IDEA
+            </Text>
+            {drawInput(Input)}
+            <Text dimColor>{FIELD_HINT}</Text>
+          </Box>
+        ))}
       {list.length === 0 ? (
         <Text dimColor>No ideas yet. The next one that crosses your mind goes in the field above.</Text>
       ) : (

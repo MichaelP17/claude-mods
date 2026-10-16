@@ -1,11 +1,11 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderElement } from 'claude-code'
 
 import type { Service } from '../types'
 import { detectServices, isRunning, mayStopServices } from './detect'
 import type { HubCall, HubEntry } from './hub'
 import { buttonWidthOf, clockTime, headerCard, serviceCard, shortPath } from './look'
-import { cardWidthOf } from './svg'
+import { ROOMY_WIDTH, cardWidthOf } from './svg'
 
 const PANE = 'service-radar'
 const STORE_KEY = 'services'
@@ -274,18 +274,40 @@ export const register: Register = on => {
       const { Svg } = $.ui.resolve(e)
       const width = cardWidthOf(e.props.bodyColumns)
       const now = await $.clock.now()
+      const isRoomy = width >= ROOMY_WIDTH
+      const headerLabels = list.length > 1 ? ['↻ Refresh', '■ Stop all'] : ['↻ Refresh']
       const header = headerCard({
         width,
         eyebrow: '🐳 SERVICES',
         title: list.length === 0 ? 'Nothing running' : `${list.length} running`,
         counter: running ? 'working…' : 'started by Claude',
+        reserve: isRoomy ? buttonWidthOf(headerLabels) : 0,
       })
+      const headerButtons = [
+        <Button key="refresh" dimColor label="↻ Refresh" onPress={() => inBackground($, async () => `${(await refresh($)).length} running`)} />,
+        ...(list.length > 1
+          ? [<Button key="stop-all" hover={{ scope: 'stop-all', color: 'error' }} label="■ Stop all" onPress={() => inBackground($, () => stopAll($))} />]
+          : []),
+      ]
+      const overlay = (children: RenderElement[]) => (
+        <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
+          {children}
+        </Box>
+      )
 
-      // The buttons lie over the card's right edge: the picture takes no
-      // presses, and a row of its own beneath each card would double the list.
+      // The buttons lie over the cards, centered on their height: the pictures
+      // take no presses. A narrow pane keeps the header's beneath it.
       return (
         <Box flexDirection="column" rowGap={1}>
-          <Svg source={header.source} alt={header.alt} width={width} height={header.height} />
+          <Box key="header" flexDirection="column">
+            <Svg source={header.source} alt={header.alt} width={width} height={header.height} />
+            {isRoomy && overlay(headerButtons)}
+          </Box>
+          {!isRoomy && (
+            <Box flexDirection="row" columnGap={1}>
+              {headerButtons}
+            </Box>
+          )}
           {list.map(service => {
             const labels = service.check === null ? ['Forget', '■ Stop'] : ['■ Stop']
             const card = serviceCard(width, service, { home, now, reserve: buttonWidthOf(labels) })
@@ -293,20 +315,14 @@ export const register: Register = on => {
             return (
               <Box key={`card-${service.id}`} flexDirection="column">
                 <Svg source={card.source} alt={card.alt} width={width} height={card.height} />
-                <Box position="absolute" top={0} bottom={0} right={2} flexDirection="row" alignItems="center" columnGap={1}>
-                  {service.check === null && <Button key={`forget-${service.id}`} dimColor label="Forget" onPress={() => forget($, service.id)} />}
-                  <Button key={`stop-${service.id}`} hover={{ color: 'error' }} label="■ Stop" onPress={() => inBackground($, () => stopService($, service))} />
-                </Box>
+                {overlay([
+                  ...(service.check === null ? [<Button key={`forget-${service.id}`} dimColor label="Forget" onPress={() => forget($, service.id)} />] : []),
+                  <Button key={`stop-${service.id}`} hover={{ color: 'error' }} label="■ Stop" onPress={() => inBackground($, () => stopService($, service))} />,
+                ])}
               </Box>
             )
           })}
           {!running && text.length > 0 && <Text color="claude">{text}</Text>}
-          <Box flexDirection="row" columnGap={1}>
-            <Button key="refresh" dimColor label="↻ Refresh" onPress={() => inBackground($, async () => `${(await refresh($)).length} running`)} />
-            {list.length > 1 && (
-              <Button key="stop-all" hover={{ scope: 'stop-all', color: 'error' }} label="■ Stop all" onPress={() => inBackground($, () => stopAll($))} />
-            )}
-          </Box>
         </Box>
       )
     }
