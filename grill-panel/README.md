@@ -25,7 +25,7 @@ The table describes the terminal. The desktop app and VS Code draw the same flow
 | the question card | the question's text with its Markdown (bold, code, lists, quotes, code blocks); choices written as `(a) … (b) …` become lettered tiles, the recommended one framed in the accent color, the one you picked in green |
 | the recommendation card | the recommendation, with the choice it names; green once accepted. Beneath it **Accept recommendation** and **Edit before saving** |
 | where the focus starts | on **Accept recommendation**, so Enter alone takes it; on the field when the question has no recommendation or was answered in text before |
-| the field | a new field per question; Enter saves. A letter alone (`b`) saves that choice, and a card beneath the field names it before you press Enter; past 50 characters the answer is shown wrapped in that card |
+| the field | a new field per question; Enter saves. A card beneath it shows what Enter will save, wrapped, as you type; a letter alone (`b`) saves that choice, and the card names it |
 | below the field | **Skip for now**, and dimmed **Send now…** and **Discard** |
 | the review | one card per question with its answer, open ones in the warning color, and a row of **✎** buttons to change any of them |
 

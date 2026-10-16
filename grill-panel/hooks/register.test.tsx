@@ -217,14 +217,19 @@ test('on the desktop a saved answer leaves the next question with an empty field
   await ui.unmount()
 })
 
-test('on the desktop a long answer is shown wrapped beneath the field until it is saved', async ($, on) => {
+test('on the desktop what is typed is shown beneath the field until it is saved', async ($, on) => {
   fakeEngine(on)
   await $.session.start(START)
   await $.turn.complete(TURN)
   const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
   const long = 'In the panel, docked on the right, because the conversation stays readable beside it.'
-  await ui.input({ key: 'answer-0', text: 'In the panel', kind: 'change' })
   const previews = async () => (await altsOf(ui)).filter(i => i.startsWith('Your answer'))
+  expect(await previews()).toEqual([])
+
+  await ui.input({ key: 'answer-0', text: 'In', kind: 'change' })
+  expect(await previews()).toEqual(['Your answer: In'])
+
+  await ui.input({ key: 'answer-0', text: '   ', kind: 'change' })
   expect(await previews()).toEqual([])
 
   await ui.input({ key: 'answer-0', text: long, kind: 'change' })

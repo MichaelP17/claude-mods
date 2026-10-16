@@ -34,10 +34,6 @@ const TITLE = 'Grill'
 const STORE_PREFIX = 'round:'
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
-// The desktop's field is a single line, so a longer answer scrolls out of
-// sight; from this length on it is shown wrapped beneath the field.
-const PREVIEW_LENGTH = 50
-
 const round = atom({ plugin: 'grill-panel', key: 'round' } as const, null)
 const draft = atom({ plugin: 'grill-panel', key: 'draft' } as const, null)
 const isHubbed = atom({ plugin: 'grill-panel', key: 'isHubbed' } as const, false)
@@ -448,7 +444,9 @@ function drawRemoteQuestion($: EngineInterface, ui: RemoteElements, value: Round
   const fieldValue = fieldValueOf(value, question)
   const shown = typed?.field === field ? typed.text : fieldValue
   const typedChoice = choiceOf(shown, question)
-  const preview = typedChoice !== undefined || shown.trim().length > PREVIEW_LENGTH ? previewCard(width, shown.trim(), typedChoice) : []
+  // The desktop's field is a single line, so a longer answer scrolls out of
+  // sight; the card beneath it shows the whole of what Enter will save.
+  const preview = shown.trim().length > 0 ? previewCard(width, shown.trim(), typedChoice) : []
 
   return (
     <Box flexDirection="column" rowGap={1}>
