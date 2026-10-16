@@ -62,9 +62,10 @@ test('the pane puts what needs a look first, then the quiet mods, each with its 
   seed(on, [IDEAS, CACHE])
 
   const ui = await $.ui.mount({ ...PANE, plugin: 'mod-hub', surface: 'desktop' })
-  const titles = (await ui.findAll({ type: 'Text', text: /^(Ideas|Cache|NEEDS A LOOK|ALL QUIET)$/ })).map(i => i.text)
-  expect(titles).toEqual(['NEEDS A LOOK', 'Cache', 'ALL QUIET', 'Ideas'])
-  expect(await ui.find({ type: 'Text', text: '1 of 2 need a look' })).toBeDefined()
+  const sections = (await ui.findAll({ type: 'Text', text: /^(NEEDS A LOOK|ALL QUIET)$/ })).map(i => i.text)
+  const cards = (await ui.findAll({ type: 'Svg' })).map(i => String(i.props.alt))
+  expect(sections).toEqual(['NEEDS A LOOK', 'ALL QUIET'])
+  expect(cards).toEqual(['🧰 MODS: 1 of 2 need a look, 2 loaded', 'Cache: Warm for 4m (needs attention)', expect.stringMatching(/^Ideas: /)])
   expect(await ui.find({ key: 'idea-shell:capture', text: 'New idea' })).toBeDefined()
   await ui.unmount()
 

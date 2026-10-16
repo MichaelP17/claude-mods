@@ -6,7 +6,7 @@ Gathers the mods in one place in the desktop app. The footer under the prompt ha
 | --- | --- |
 | Always, in the desktop app | 🧰 at the left of the footer, the usage line of `status-band` beside it |
 | A mod reports something that needs attention | a count on the button, `🧰 2`, yellow when something is urgent, such as the cache about to expire |
-| Click on 🧰, or `/hub` | the Mods pane: one row per mod with its status and its actions |
+| Click on 🧰, or `/hub` | the Mods pane: one card per mod with its icon, its status and its actions, the mods that need a look first |
 | Click on an action | the mod does it, usually opening its own pane, and the hub closes |
 
 | Mod | Status | Actions |

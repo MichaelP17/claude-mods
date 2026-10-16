@@ -1,8 +1,8 @@
 import type { Service } from '../types'
-import { PAD, escape, fitText, frame, svgDocument, textWidth } from './svg'
+import { PAD, escape, fitText, frame, svgDocument } from './svg'
 import type { Card } from './svg'
 
-export { headerCard } from './svg'
+export { buttonWidthOf, headerCard } from './svg'
 export type { Card } from './svg'
 
 const HEIGHT = 66
@@ -57,9 +57,4 @@ export function serviceCard(width: number, service: Service, context: { home: st
     alt: `${service.label}: ${isKnown ? 'running' : 'state unknown'}, ${meta}`,
     source: svgDocument(width, HEIGHT, body.join('')),
   }
-}
-
-// About how wide the desktop draws a native button with this label.
-export function buttonWidthOf(labels: readonly string[]): number {
-  return labels.reduce((sum, label) => sum + textWidth(label, 13) + 30, 0) + Math.max(0, labels.length - 1) * 8
 }

@@ -326,6 +326,12 @@ export function cardWidthOf(columns: number): number {
   return Math.max(240, Math.min(900, (columns || 40) * 8 - 8))
 }
 
+// About how wide the desktop draws a row of native buttons with these labels,
+// for text that has to keep clear of buttons laid over a card.
+export function buttonWidthOf(labels: readonly string[]): number {
+  return labels.reduce((sum, label) => sum + textWidth(label, 13) + 30, 0) + Math.max(0, labels.length - 1) * 8
+}
+
 export function svgDocument(width: number, height: number, body: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${STYLE}${body}</svg>`
 }
