@@ -185,6 +185,29 @@ test('on the desktop the choices are tiles in the question card and a typed lett
   expect(world.submitted).toEqual(['Q1: (b) A day off\n\nQ2: Recommendation accepted'])
 })
 
+test('choices written as "a)" list items are tiles too, and a typed letter saves that choice', async ($, on) => {
+  const world = fakeEngine(on)
+  await $.session.start(START)
+  const answer = [
+    '❓ **Q1** - **Sprache und Laufzeit**: In welcher Sprache soll das Tool geschrieben werden?',
+    '- a) C# als .NET Global Tool',
+    '- b) Swift als natives macOS-Binary',
+    '',
+    '➡️ a) C# als .NET Global Tool, weil du dort deine Konventionen schon hast.',
+  ].join('\n')
+  await $.turn.complete({ ...TURN, answer })
+  const ui = await $.ui.mount({ plugin: 'grill-panel', surface: 'desktop', ...PANE })
+  expect(await altsOf(ui)).toContain('In welcher Sprache soll das Tool geschrieben werden? - a) C# als .NET Global Tool - b) Swift als natives macOS-Binary')
+
+  await ui.input({ key: 'answer-0', text: 'a', kind: 'change' })
+  expect(await altsOf(ui)).toContain('Saves choice a: C# als .NET Global Tool')
+  await ui.input({ key: 'answer-0', text: 'a' })
+  expect(await altsOf(ui)).toContain('1 · Sprache und Laufzeit: (a) C# als .NET Global Tool')
+  await ui.press({ key: 'send' })
+  await ui.unmount()
+  expect(world.submitted).toEqual(['Q1: (a) C# als .NET Global Tool'])
+})
+
 test('on the desktop the steps jump to any question', async ($, on) => {
   fakeEngine(on)
   await $.session.start(START)

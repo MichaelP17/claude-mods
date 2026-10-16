@@ -183,6 +183,20 @@ test('choices written inline or one per line are split off the question', async 
     ],
     trail: 'That decides the login.',
   })
+  expect(choicesOf('In which language?\n- a) C# as a .NET global tool\n- b) Swift\n- **c)** Go\n\nPick one.')).toEqual({
+    lead: 'In which language?',
+    options: [
+      { letter: 'a', text: 'C# as a .NET global tool' },
+      { letter: 'b', text: 'Swift' },
+      { letter: 'c', text: 'Go' },
+    ],
+    trail: 'Pick one.',
+  })
+  expect(choicesOf('Which?\nA. Panel\nB. Prompt box').options).toEqual([
+    { letter: 'a', text: 'Panel' },
+    { letter: 'b', text: 'Prompt box' },
+  ])
+  expect(choicesOf('A plan with a.k.a. b) inside').options).toEqual([])
   expect(choicesOf('Only (a) one choice')).toEqual({ lead: 'Only (a) one choice', options: [], trail: '' })
   expect(choicesOf('See (b) first, then (a) Panel (b) Prompt').options.map(i => i.letter)).toEqual(['a', 'b'])
   expect(choiceAnswerOf({ letter: 'b', text: 'A day off' })).toBe('(b) A day off')
@@ -201,5 +215,8 @@ test('a recommendation that opens with a choice names it', async () => {
   expect(recommendedLetterOf('(a), since it is midweek.')).toBe('a')
   expect(recommendedLetterOf('**(c)** mixed')).toBe('c')
   expect(recommendedLetterOf('The panel (a)')).toBeNull()
+  expect(recommendedLetterOf('a) C#, because the rules exist there.')).toBe('a')
+  expect(recommendedLetterOf('B. Swift')).toBe('b')
+  expect(recommendedLetterOf('A day off')).toBeNull()
   expect(recommendedLetterOf(null)).toBeNull()
 })

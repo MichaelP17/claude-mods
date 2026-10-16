@@ -7,7 +7,7 @@ Answers Claude's question rounds one question at a time. When Claude ends a turn
 | Claude's answer ends on a question round | the panel opens on the first open question; `🔥 0/5` in the footer under the prompt counts the answered questions |
 | Enter in the field | the answer is saved, the next open question comes up |
 | Enter on an empty field | the question's recommendation is taken (`Q2: Recommendation accepted`) |
-| a letter alone (`b`) for a question with `(a) … (b) …` choices | that choice is saved (`Q1: (b) A day off`) |
+| a letter alone (`b`) for a question with `(a) …` or `a) …` choices | that choice is saved (`Q1: (b) A day off`) |
 | **Edit recommendation** | the recommendation's text goes into the field to change before Enter |
 | Shift+Tab, then Enter | back to the previous question |
 | **Skip ▶** | the question stays open and comes back after the others |
@@ -22,7 +22,7 @@ The table describes the terminal. The desktop app and VS Code draw the same flow
 | --- | --- |
 | the header card | `Question 2 of 5`, the title and one bar segment per question: green answered, amber skipped, the current one pulsing in the accent color |
 | below it | a numbered button per question (`✓` once answered); a click jumps there |
-| the question card | the question's text with its Markdown (bold, code, lists, quotes, code blocks); choices written as `(a) … (b) …` become lettered tiles, the recommended one framed in the accent color, the one you picked in green |
+| the question card | the question's text with its Markdown (bold, code, lists, quotes, code blocks); choices written as `(a) … (b) …` or as `a)`, `a.` list items become lettered tiles, the recommended one framed in the accent color, the one you picked in green |
 | the recommendation card | the recommendation, with the choice it names; green once accepted. Beneath it **Accept recommendation** and **Edit before saving** |
 | where the focus starts | on **Accept recommendation**, so Enter alone takes it; on the field when the question has no recommendation or was answered in text before |
 | the field | a new field per question; Enter saves. A card beneath it shows what Enter will save, wrapped, as you type; a letter alone (`b`) saves that choice, and the card names it |

@@ -314,22 +314,26 @@ export type Choice = { letter: string; text: string }
 
 export type Choices = { lead: string; options: Choice[]; trail: string }
 
-const CHOICE_MARK = /(^|\s)\(([a-z])\)\s+/gu
+// "(a)" anywhere, or "a)", "a." and "A)" opening a line or a list item, bold or not.
+const CHOICE_MARK = /(^|\s)\(([a-z])\)\s+|(^|\n)([ \t]*(?:[-*•+][ \t]+)?(?:\*\*|__)?)([a-z])[).](?:\*\*|__)?[ \t]+/giu
 const CHOICE_EDGE = /[\s,;\-–—•*]+$/u
-const RECOMMENDED_CHOICE = /^[\s*_]*\(([a-z])\)/u
+const RECOMMENDED_CHOICE = /^[\s*_]*\(?([a-z])[).](?![a-z])/iu
 const LINE_START = /\n(?=\S)/u
 const LETTER_ANSWER = /^\(?([a-z])\)?\.?$/iu
 
-// Models list the choices inline as "(a) … (b) …" as often as one per line.
-// Only a run starting at (a) with the letters in order counts, so a stray
-// "(b)" in the question text is left where it is. The last choice ends with
-// its line (indented lines continue it), so a closing paragraph stays apart.
+// Models list the choices inline as "(a) … (b) …" as often as one per line,
+// and as "a) …" list items. Only a run starting at a with the letters in order
+// counts, so a stray "(b)" in the question text is left where it is. The last
+// choice ends with its line (indented lines continue it), so a closing
+// paragraph stays apart.
 export function choicesOf(body: string): Choices {
   const marks: { start: number; end: number; letter: string }[] = []
   for (const match of body.matchAll(CHOICE_MARK)) {
-    const [whole, space = '', letter = ''] = match
+    const [whole, space, inlineLetter, lineStart, prefix = '', lineLetter] = match
+    const letter = (inlineLetter ?? lineLetter ?? '').toLowerCase()
+    const offset = space !== undefined ? space.length : (lineStart ?? '').length + prefix.length
     if (letter === String.fromCharCode(97 + marks.length)) {
-      marks.push({ start: match.index + space.length, end: match.index + whole.length, letter })
+      marks.push({ start: match.index + offset, end: match.index + whole.length, letter })
     }
   }
   const first = marks[0]
@@ -354,7 +358,7 @@ export function choicesOf(body: string): Choices {
 }
 
 export function recommendedLetterOf(recommendation: string | null): string | null {
-  return recommendation === null ? null : (RECOMMENDED_CHOICE.exec(recommendation)?.[1] ?? null)
+  return recommendation === null ? null : (RECOMMENDED_CHOICE.exec(recommendation)?.[1]?.toLowerCase() ?? null)
 }
 
 export function choiceAnswerOf(choice: Choice): string {
